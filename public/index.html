@@ -2,13 +2,13 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>모닥불, 잠깐 쉬어가요</title>
-<meta name="description" content="말없이 같이 불을 보는 온라인 캠핑장. 장작을 넣고, 마시멜로를 굽고, 별똥별에 소원을 빌어요.">
-<meta name="theme-color" content="#0b0d14">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>모닥불 캠핑장, 잠깐 쉬어가요</title>
+<meta name="description" content="같이 걷고, 불 앞에 앉고, 이야기하는 3D 온라인 캠핑장. 장작을 넣고, 마시멜로를 굽고, 호숫가에서 낚시하고, 언덕에서 별똥별에 소원을 빌어요.">
+<meta name="theme-color" content="#0b0f1a">
 <meta property="og:type" content="website">
-<meta property="og:title" content="모닥불, 잠깐 쉬어가요">
-<meta property="og:description" content="말없이 같이 불을 보는 온라인 캠핑장">
+<meta property="og:title" content="모닥불 캠핑장, 잠깐 쉬어가요">
+<meta property="og:description" content="같이 걷고, 불 앞에 앉고, 이야기하는 3D 온라인 캠핑장">
 <meta property="og:image" content="/og.png">
 <meta property="og:locale" content="ko_KR">
 <meta name="twitter:card" content="summary_large_image">
@@ -16,553 +16,174 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Gowun+Dodum&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
 <style>
-  :root{
-    --bg:#0b0d14; --ink:#f3e6cf; --dim:#a99d8a; --ember:#ff9a3d; --panel:rgba(20,18,22,.72);
-  }
+  :root{--ink:#f3e6cf;--dim:#a99d8a;--panel:rgba(18,16,22,.74);--line:rgba(255,200,140,.16);--ember:#ff9a3d}
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-  html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);font-family:"Gowun Dodum",system-ui,sans-serif;overflow:hidden;user-select:none;-webkit-user-select:none}
-  canvas{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
-  .hud{position:fixed;top:16px;left:18px;pointer-events:none;text-shadow:0 1px 6px #000}
-  .hud h1{margin:0;font-size:22px;letter-spacing:.08em;font-weight:400}
-  .hud .line{font-size:13px;color:var(--dim);margin-top:4px}
+  html,body{margin:0;height:100%;background:#0b0f1a;color:var(--ink);font-family:"Gowun Dodum",system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;overflow:hidden;overscroll-behavior:none}
+  canvas#scene{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;outline:none}
+  button{font:inherit;color:inherit}
+  .panel{background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+
+  /* 이름표와 말풍선 */
+  #labels{position:fixed;inset:0;pointer-events:none;overflow:hidden}
+  .tag{position:absolute;left:0;top:0;transform:translate(-50%,-100%);display:flex;flex-direction:column;align-items:center;gap:4px;will-change:transform}
+  .tag .name{font-size:12px;padding:2px 7px;border-radius:999px;background:rgba(10,10,14,.45);color:rgba(245,232,210,.9);white-space:nowrap;pointer-events:auto;cursor:pointer;text-shadow:0 1px 3px #000}
+  .tag.me .name{color:#ffd9a8;cursor:default}
+  .tag .bubble{max-width:200px;font-size:14px;line-height:1.4;padding:7px 11px;border-radius:14px;background:rgba(250,244,232,.95);color:#2a2018;box-shadow:0 4px 14px rgba(0,0,0,.35);word-break:break-word;opacity:0;transform:translateY(4px);transition:opacity .25s,transform .25s;position:relative}
+  .tag .bubble.show{opacity:1;transform:none}
+  .tag .bubble:after{content:"";position:absolute;left:50%;bottom:-6px;margin-left:-6px;border:6px solid transparent;border-top-color:rgba(250,244,232,.95);border-bottom:0}
+  .tag .bubble.emo{background:transparent;box-shadow:none;font-size:26px;padding:0}
+  .tag .bubble.emo:after{display:none}
+  .tag .sub{font-size:10px;color:rgba(200,185,160,.6);text-shadow:0 1px 3px #000}
+
+  /* 상단 정보 */
+  .hud{position:fixed;top:14px;left:16px;pointer-events:none;text-shadow:0 1px 6px #000}
+  .hud .zone{font-size:22px;letter-spacing:.04em}
+  .hud .line{font-size:13px;color:var(--dim);margin-top:3px}
   .hud .line b{color:var(--ink);font-weight:400}
-  .share{position:fixed;top:16px;right:16px;font-size:12px;color:var(--dim);text-align:right;line-height:1.5;text-shadow:0 1px 6px #000}
-  .invite{font:inherit;font-size:13px;color:var(--ink);background:var(--panel);border:1px solid rgba(255,200,140,.18);border-radius:999px;padding:7px 13px;cursor:pointer}
-  .invite:hover{background:rgba(255,154,61,.18)}
-  .share .hint{margin-top:6px}
-  .bar{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);display:flex;gap:8px;padding:8px;background:var(--panel);border:1px solid rgba(255,200,140,.12);border-radius:18px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
-  .bar button,.emotes button{font:inherit;color:var(--ink);background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:10px 12px;cursor:pointer;min-width:58px;display:flex;flex-direction:column;align-items:center;gap:2px;font-size:12px;transition:background .15s,transform .1s}
-  .bar button span.i,.emotes button span.i{font-size:20px;line-height:1}
-  .bar button:hover{background:rgba(255,170,90,.12)}
-  .bar button:active{transform:scale(.96)}
-  .bar button[disabled]{opacity:.4;cursor:default}
-  .bar button.on{background:rgba(255,154,61,.22);border-color:rgba(255,154,61,.4)}
-  .emotes{position:fixed;left:50%;bottom:92px;transform:translateX(-50%);display:none;gap:6px;padding:6px;background:var(--panel);border-radius:14px;border:1px solid rgba(255,200,140,.12)}
-  .emotes.show{display:flex}
-  .toast{position:fixed;left:50%;top:22%;transform:translate(-50%,-8px);background:var(--panel);padding:10px 16px;border-radius:12px;font-size:15px;opacity:0;transition:opacity .3s,transform .3s;pointer-events:none;border:1px solid rgba(255,200,140,.15);white-space:nowrap}
+  .top-right{position:fixed;top:12px;right:12px;display:flex;gap:6px;align-items:center}
+  .pill{font-size:13px;border-radius:999px;padding:7px 12px;cursor:pointer;text-decoration:none;color:var(--ink);display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
+  .pill:hover{background:rgba(255,154,61,.2)}
+  .pill.on{background:rgba(255,154,61,.25);border-color:rgba(255,154,61,.45)}
+
+  /* 하단: 행동 버튼 + 채팅 */
+  .bottom{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:8px;width:min(560px,calc(100vw - 20px))}
+  .actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
+  .act{border-radius:14px;padding:8px 12px;cursor:pointer;display:flex;align-items:center;gap:6px;font-size:13px;user-select:none;-webkit-user-select:none;touch-action:none;transition:transform .1s,background .15s}
+  .act .i{font-size:18px}
+  .act:hover{background:rgba(255,170,90,.16)}
+  .act:active{transform:scale(.96)}
+  .act.on{background:rgba(255,154,61,.28);border-color:rgba(255,154,61,.5)}
+  .act.hot{animation:hot .5s ease-in-out infinite alternate;background:rgba(255,200,90,.35)}
+  @keyframes hot{to{box-shadow:0 0 18px rgba(255,200,90,.7)}}
+  .act[disabled]{opacity:.45;pointer-events:none}
+  .chatbar{display:flex;gap:6px;width:100%;border-radius:16px;padding:5px}
+  .chatbar input{flex:1;min-width:0;font:inherit;font-size:15px;color:var(--ink);background:transparent;border:0;outline:none;padding:8px 10px}
+  .chatbar input::placeholder{color:rgba(200,185,160,.55)}
+  .chatbar .send{border:0;background:rgba(255,154,61,.25);border-radius:12px;padding:0 14px;cursor:pointer}
+  .chatbar .icon{border:0;background:transparent;cursor:pointer;font-size:18px;padding:0 6px}
+  .emotes{display:none;gap:4px;padding:6px;border-radius:14px}
+  .emotes.show{display:flex;flex-wrap:wrap;justify-content:center}
+  .emotes button{border:0;background:rgba(255,255,255,.05);border-radius:10px;padding:6px 9px;cursor:pointer;font-size:12px;display:flex;flex-direction:column;align-items:center}
+  .emotes button span{font-size:20px}
+  .emotes button:hover{background:rgba(255,170,90,.18)}
+
+  /* 대화 기록 */
+  #log{position:fixed;left:14px;bottom:130px;width:min(300px,40vw);display:flex;flex-direction:column;gap:3px;pointer-events:none;font-size:13px}
+  #log div{background:rgba(10,10,14,.5);padding:4px 9px;border-radius:10px;width:fit-content;max-width:100%;text-shadow:0 1px 2px #000;transition:opacity 1s;word-break:break-word}
+  #log div b{font-weight:400;color:#ffd9a8;margin-right:6px}
+  #log div.sys{color:var(--dim)}
+
+  /* 미니맵 */
+  #mini{position:fixed;right:14px;bottom:16px;width:140px;height:140px;border-radius:50%;cursor:pointer;box-shadow:0 4px 18px rgba(0,0,0,.45)}
+
+  .toast{position:fixed;left:50%;top:18%;transform:translate(-50%,-8px);padding:10px 16px;border-radius:12px;font-size:15px;opacity:0;transition:opacity .3s,transform .3s;pointer-events:none;white-space:nowrap;z-index:5}
   .toast.show{opacity:1;transform:translate(-50%,0)}
-  .wishbtn{position:fixed;top:24%;right:12%;font:inherit;font-size:14px;color:#1b1610;background:#ffe7a8;border:0;border-radius:999px;padding:8px 14px;cursor:pointer;box-shadow:0 0 24px rgba(255,231,168,.6);display:none;animation:pulse 1s ease-in-out infinite alternate}
-  @keyframes pulse{to{box-shadow:0 0 40px rgba(255,231,168,.9)}}
+
+  .menu{position:fixed;display:none;flex-direction:column;border-radius:12px;padding:4px;z-index:6;min-width:120px}
+  .menu.show{display:flex}
+  .menu button{border:0;background:transparent;text-align:left;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:14px}
+  .menu button:hover{background:rgba(255,170,90,.18)}
+  .menu .who{font-size:12px;color:var(--dim);padding:4px 10px 2px}
+
   .overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(5,6,10,.55);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);z-index:10}
   .overlay.hide{display:none}
-  .card{width:min(360px,90vw);background:rgba(22,19,22,.92);border:1px solid rgba(255,200,140,.15);border-radius:20px;padding:26px 24px;text-align:center}
-  .card h2{margin:0 0 6px;font-weight:400;font-size:26px;letter-spacing:.06em}
-  .card p{margin:0 0 18px;color:var(--dim);font-size:14px;line-height:1.6}
+  .card{width:min(380px,92vw);background:rgba(22,19,22,.94);border:1px solid var(--line);border-radius:20px;padding:26px 24px;text-align:center}
+  .card h2{margin:0 0 6px;font-weight:400;font-size:26px;letter-spacing:.04em}
+  .card p{margin:0 0 16px;color:var(--dim);font-size:14px;line-height:1.65}
   .card input{width:100%;font:inherit;font-size:16px;padding:11px 14px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--ink);text-align:center;outline:none}
   .card input:focus{border-color:rgba(255,154,61,.5)}
-  .swatches{display:flex;justify-content:center;gap:10px;margin:16px 0 20px}
+  .swatches{display:flex;justify-content:center;gap:10px;margin:16px 0 18px;flex-wrap:wrap}
   .swatches button{width:28px;height:28px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0}
   .swatches button.sel{border-color:var(--ink);transform:scale(1.12)}
-  .primary{font:inherit;font-size:16px;width:100%;padding:12px;border-radius:12px;border:0;background:linear-gradient(180deg,#ffb35c,#f0782e);color:#2a1406;cursor:pointer}
+  .primary{font-size:16px;width:100%;padding:12px;border-radius:12px;border:0;background:linear-gradient(180deg,#ffb35c,#f0782e);color:#2a1406;cursor:pointer}
+  .ghost{font-size:15px;padding:11px;border-radius:12px;border:1px solid rgba(255,255,255,.14);background:transparent;cursor:pointer}
   .row{display:flex;gap:8px}
-  .ghost{font:inherit;font-size:15px;flex:1;padding:11px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:transparent;color:var(--ink);cursor:pointer}
-  @media (max-width:520px){
-    .bar{gap:4px;padding:6px;bottom:12px}
-    .bar button{min-width:52px;padding:8px 6px;font-size:11px}
-    .share .hint{display:none}
-    .emotes{bottom:80px}
+  .row>*{flex:1}
+  .keys{font-size:12px;color:var(--dim);margin-top:14px;line-height:1.7}
+  #tentView{position:fixed;inset:0;display:none;align-items:flex-end;justify-content:center;padding-bottom:150px;pointer-events:none;background:radial-gradient(ellipse at center,rgba(255,170,90,.12),rgba(8,6,6,.75) 70%)}
+  #tentView.show{display:flex}
+  #tentView .card{pointer-events:auto;width:auto;padding:16px 20px}
+  #loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:var(--dim);font-size:14px;z-index:20;background:#0b0f1a}
+  #loading.hide{display:none}
+
+  @media (max-width:640px){
+    .hud .zone{font-size:18px}
+    .top-right .label{display:none}
+    #mini{width:96px;height:96px;bottom:auto;top:58px;right:10px}
+    #log{bottom:auto;top:96px;left:12px;width:62vw;font-size:12px}
+    .act{padding:7px 10px;font-size:12px}
   }
 </style>
 </head>
 <body>
-<canvas id="c"></canvas>
+<div id="loading">캠핑장으로 가는 중…</div>
+<canvas id="scene" tabindex="0"></canvas>
+<div id="labels"></div>
 
 <div class="hud">
-  <h1>모닥불</h1>
+  <div class="zone" id="zone">모닥불 캠핑장</div>
   <div class="line" id="countLine">불을 지피는 중…</div>
-  <div class="line" id="timeLine"></div>
-</div>
-<div class="share" id="shareHint"><button class="invite" id="inviteBtn">🔗 친구 부르기</button><div class="hint">아무 말 하지 않아도 괜찮아요.</div></div>
-
-<button class="wishbtn" id="wishBtn">✨ 별똥별이다! 소원 빌기</button>
-
-<div class="emotes" id="emotes">
-  <button data-e="nod"><span class="i">🙂</span>끄덕</button>
-  <button data-e="warm"><span class="i">🤲</span>손 녹이기</button>
-  <button data-e="yawn"><span class="i">🥱</span>하품</button>
-  <button data-e="look"><span class="i">🌌</span>하늘 보기</button>
-  <button data-e="sleep"><span class="i">💤</span>꾸벅</button>
+  <div class="line" id="weatherLine"></div>
 </div>
 
-<div class="bar" id="bar">
-  <button id="logBtn"><span class="i">🪵</span>장작</button>
-  <button id="mallowBtn"><span class="i">🍡</span>꾹 눌러 굽기</button>
-  <button id="emoteBtn"><span class="i">🙂</span>몸짓</button>
-  <button id="soundBtn"><span class="i">🔈</span>소리</button>
+<div class="top-right">
+  <button class="pill panel" id="inviteBtn">🔗 <span class="label">친구 부르기</span></button>
+  <a class="pill panel" id="donateBtn" href="#" target="_blank" rel="noopener" style="display:none">☕ <span class="label">후원하기</span></a>
+  <button class="pill panel" id="soundBtn">🔈</button>
 </div>
 
-<div class="toast" id="toast"></div>
+<div id="log"></div>
+<canvas id="mini" width="280" height="280"></canvas>
+
+<div class="bottom">
+  <div class="emotes panel" id="emotes">
+    <button data-e="wave"><span>👋</span>인사</button>
+    <button data-e="nod"><span>🙂</span>끄덕</button>
+    <button data-e="heart"><span>💛</span>하트</button>
+    <button data-e="warm"><span>🤲</span>손 녹이기</button>
+    <button data-e="yawn"><span>🥱</span>하품</button>
+    <button data-e="look"><span>🌌</span>하늘 보기</button>
+    <button data-e="sleep"><span>💤</span>꾸벅</button>
+  </div>
+  <div class="actions" id="actions"></div>
+  <form class="chatbar panel" id="chatForm" autocomplete="off">
+    <button type="button" class="icon" id="emoteBtn" title="몸짓">🙂</button>
+    <input id="chatIn" maxlength="80" placeholder="가까이 있는 사람에게 말하기 (Enter)" enterkeyhint="send">
+    <button class="send" type="submit">말하기</button>
+  </form>
+</div>
+
+<div class="menu panel" id="peerMenu">
+  <div class="who" id="menuWho"></div>
+  <button id="menuMute">🙈 이 사람 숨기기</button>
+  <button id="menuReport">🚩 신고하기</button>
+</div>
+
+<div id="tentView"><div class="card panel"><div style="margin-bottom:10px">⛺ 텐트 안에서 쉬는 중이에요</div><button class="ghost" id="tentExit" style="width:100%">밖으로 나가기</button></div></div>
+
+<div class="toast panel" id="toast"></div>
 
 <div class="overlay" id="intro">
   <div class="card">
-    <h2>모닥불</h2>
-    <p>말없이 같이 불을 바라보는 곳.<br>장작을 넣고, 마시멜로를 굽고, 가끔 별을 봐요.</p>
+    <h2>🔥 모닥불 캠핑장</h2>
+    <p>같이 걷고, 불 앞에 앉고, 이야기해요.<br>호숫가에서 낚시하고, 언덕에서 별을 봐요.</p>
     <input id="nickIn" maxlength="10" placeholder="이름 (비워두면 자동으로)">
     <div class="swatches" id="swatches"></div>
-    <button class="primary" id="enterBtn">불 곁에 앉기</button>
+    <button class="primary" id="enterBtn">캠핑장 들어가기</button>
+    <div class="keys">땅을 클릭(탭)하면 걸어가요 · 방향키/WASD도 돼요<br>마우스 휠·두 손가락으로 확대/축소</div>
   </div>
 </div>
 
 <div class="overlay hide" id="wishModal">
   <div class="card">
-    <h2>✨</h2>
+    <h2>🌠</h2>
     <p>별똥별에 빌 소원을 적어요.<br>나만 볼 수 있어요.</p>
     <input id="wishIn" maxlength="40" placeholder="소원 한 줄">
     <div style="height:14px"></div>
-    <div class="row">
-      <button class="ghost" id="wishCancel">그만두기</button>
-      <button class="primary" id="wishOk" style="flex:1">빌기</button>
-    </div>
+    <div class="row"><button class="ghost" id="wishCancel">그만두기</button><button class="primary" id="wishOk">빌기</button></div>
   </div>
 </div>
 
-<script>
-(() => {
-  // ---------- 유틸 ----------
-  const $ = id => document.getElementById(id);
-  const store = {
-    get(k, d){ try{ const v = localStorage.getItem('campfire.'+k); return v==null?d:JSON.parse(v);}catch(e){return d;} },
-    set(k, v){ try{ localStorage.setItem('campfire.'+k, JSON.stringify(v)); }catch(e){} }
-  };
-  function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;}}
-  const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
-  const lerp=(a,b,t)=>a+(b-a)*t;
-  function hashStr(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}return h>>>0;}
-  let toastTimer;
-  function toast(msg){const t=$('toast');t.textContent=msg;t.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>t.classList.remove('show'),2200);}
-
-  // ---------- 상태 ----------
-  const COLORS=['#c8553d','#e2a03f','#5b8e7d','#4f6d9a','#8a5a9e','#d27a9a','#8a8f98'];
-  const ADJ=['조용한','졸린','따뜻한','느긋한','포근한','멍한','작은','다정한'];
-  const NOUN=['여우','곰','고양이','부엉이','다람쥐','수달','너구리','토끼'];
-  const me={
-    nick: store.get('nick',''),
-    color: store.get('color', COLORS[Math.floor(Math.random()*COLORS.length)]),
-    roast: null,
-    act: null,
-    since: Date.now(),
-    seated:false
-  };
-  let fireLevel=0.75;           // 0.2(잔불) ~ 1.6(활활)
-  let soundOn=false;
-  let room=null;
-  let others=[];                 // [{peer, presence}]
-  const lastActSeen=new Map();   // peer -> act.t
-  const bubbles=new Map();       // peer|'me' -> {k, t}
-  let mallowsEaten=store.get('eaten',0);
-  let dogPet=0;
-
-  // ---------- 캔버스 ----------
-  const cv=$('c'), ctx=cv.getContext('2d');
-  let W=0,H=0,DPR=1,S=1;
-  function resize(){DPR=Math.min(window.devicePixelRatio||1,2);W=innerWidth;H=innerHeight;cv.width=W*DPR;cv.height=H*DPR;ctx.setTransform(DPR,0,0,DPR,0,0);S=Math.min(W/900,H/700,1.3);S=Math.max(S,0.72);buildScene();}
-  addEventListener('resize',resize);
-
-  let starsArr=[],treesBack=[],treesFront=[];
-  function buildScene(){
-    const r=mulberry32(7);
-    starsArr=[];for(let i=0;i<Math.round(W*H/2600);i++)starsArr.push({x:r()*W,y:r()*H*0.62,s:r()*1.4+0.3,p:r()*6.28,sp:0.5+r()*1.5});
-    treesBack=[];let x=-40;while(x<W+40){const h=(70+r()*90)*S;treesBack.push({x,h,w:h*0.42});x+=h*0.28+r()*20*S;}
-    treesFront=[];x=-60;while(x<W+60){const h=(120+r()*140)*S;if(Math.abs(x-W/2)>W*0.28)treesFront.push({x,h,w:h*0.45});x+=h*0.35+r()*40*S;}
-  }
-  const horizon=()=>H*0.46;
-  const fireX=()=>W/2, fireY=()=>H*0.58;
-
-  // ---------- 불 입자 ----------
-  const parts=[], sparks=[];
-  function spawnFire(dt){
-    const n=fireLevel*90*dt; let k=Math.floor(n)+(Math.random()<n%1?1:0);
-    const bw=46*S*(0.5+fireLevel*0.5);
-    while(k--){parts.push({x:fireX()+(Math.random()-.5)*bw*(Math.random()<.5?1:0.6),y:fireY()-6*S,vx:(Math.random()-.5)*14*S,vy:-(50+Math.random()*60)*S*(0.6+fireLevel*0.5),life:0,max:0.55+Math.random()*0.6,size:(10+Math.random()*12)*S*(0.6+fireLevel*0.4)});}
-    if(Math.random()<fireLevel*dt*5)sparks.push({x:fireX()+(Math.random()-.5)*30*S,y:fireY()-20*S,vx:(Math.random()-.5)*40*S,vy:-(80+Math.random()*120)*S,life:0,max:1+Math.random()*1.6});
-  }
-  function burst(){for(let i=0;i<26;i++)sparks.push({x:fireX()+(Math.random()-.5)*40*S,y:fireY()-14*S,vx:(Math.random()-.5)*120*S,vy:-(120+Math.random()*200)*S,life:0,max:0.8+Math.random()*1.4});}
-  function fireColor(t,a){
-    let r,g,b;
-    if(t<0.25){const u=t/0.25;r=255;g=lerp(245,190,u);b=lerp(200,80,u);}
-    else if(t<0.6){const u=(t-0.25)/0.35;r=255;g=lerp(190,110,u);b=lerp(80,30,u);}
-    else{const u=(t-0.6)/0.4;r=lerp(255,140,u);g=lerp(110,30,u);b=lerp(30,20,u);}
-    return `rgba(${r|0},${g|0},${b|0},${a})`;
-  }
-
-  // ---------- 별똥별 (모두에게 같은 시각에 보이도록 분 단위 시드) ----------
-  function shootingStarFor(m){
-    const r=mulberry32(m*9301+49297);
-    if(r()>0.55)return null;
-    return {start:m*60000+r()*52000,x:0.15+r()*0.6,y:0.05+r()*0.18,ang:0.35+r()*0.35,len:0.18+r()*0.12,dur:1300};
-  }
-  let currentStar=null, wishWindowUntil=0, lastStarStart=0;
-
-  // ---------- 오디오 ----------
-  let actx=null,noiseGain=null;
-  function initAudio(){
-    if(actx)return;
-    try{actx=new (window.AudioContext||window.webkitAudioContext)();}catch(e){actx=null;return;}
-    const len=actx.sampleRate*2,buf=actx.createBuffer(1,len,actx.sampleRate),d=buf.getChannelData(0);
-    let last=0;for(let i=0;i<len;i++){const w=Math.random()*2-1;last=(last+0.02*w)/1.02;d[i]=last*3.5;}
-    const src=actx.createBufferSource();src.buffer=buf;src.loop=true;
-    const lp=actx.createBiquadFilter();lp.type='lowpass';lp.frequency.value=600;
-    noiseGain=actx.createGain();noiseGain.gain.value=0;
-    src.connect(lp).connect(noiseGain).connect(actx.destination);src.start();
-  }
-  function pop(vol){
-    if(!actx||!soundOn)return;
-    const t=actx.currentTime,len=Math.floor(actx.sampleRate*0.03),b=actx.createBuffer(1,len,actx.sampleRate),d=b.getChannelData(0);
-    for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/len,4);
-    const s=actx.createBufferSource();s.buffer=b;const bp=actx.createBiquadFilter();bp.type='bandpass';bp.frequency.value=1500+Math.random()*3000;bp.Q.value=0.8;
-    const g=actx.createGain();g.gain.value=vol*(0.3+Math.random()*0.7);s.connect(bp).connect(g).connect(actx.destination);s.start(t);
-  }
-  function thunk(){
-    if(!actx||!soundOn)return;
-    const t=actx.currentTime,o=actx.createOscillator(),g=actx.createGain();o.type='sine';o.frequency.setValueAtTime(140,t);o.frequency.exponentialRampToValueAtTime(55,t+0.25);
-    g.gain.setValueAtTime(0.35,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.35);o.connect(g).connect(actx.destination);o.start(t);o.stop(t+0.4);
-    for(let i=0;i<6;i++)setTimeout(()=>pop(0.25),80+i*60+Math.random()*80);
-  }
-  function chime(){
-    if(!actx||!soundOn)return;
-    const t=actx.currentTime;[1318,1760,2093].forEach((f,i)=>{const o=actx.createOscillator(),g=actx.createGain();o.type='sine';o.frequency.value=f;g.gain.setValueAtTime(0,t+i*0.09);g.gain.linearRampToValueAtTime(0.08,t+i*0.09+0.02);g.gain.exponentialRampToValueAtTime(0.001,t+i*0.09+1.2);o.connect(g).connect(actx.destination);o.start(t+i*0.09);o.stop(t+i*0.09+1.3);});
-  }
-
-  // ---------- 함께 있기 (실시간 서버) ----------
-  let ws=null, connected=false, retry=0, clockOffset=0;
-  const peersMap=new Map();   // id -> presence
-  function send(o){ if(ws&&ws.readyState===1){ try{ws.send(JSON.stringify(o));}catch(e){} } }
-  function pushPresence(){
-    if(!me.seated)return;
-    send({type:'presence',p:{nick:me.nick,color:me.color,roast:me.roast==null?null:Math.round(me.roast*100)/100}});
-  }
-  function refreshOthers(){
-    others=[...peersMap].filter(([,p])=>p&&p.nick).map(([id,p])=>({peer:id,presence:{...p,since:typeof p.since==='number'?p.since-clockOffset:Date.now()}}))
-      .sort((a,b)=>a.peer<b.peer?-1:1);
-    updateCountLine();
-  }
-  function connect(){
-    const proto=location.protocol==='https:'?'wss':'ws';
-    try{ ws=new WebSocket(`${proto}://${location.host}/ws`); }catch(e){ scheduleReconnect(); return; }
-    ws.onopen=()=>{ connected=true; retry=0; pushPresence(); updateCountLine(); };
-    ws.onmessage=ev=>{
-      let m; try{ m=JSON.parse(ev.data); }catch(e){ return; }
-      if(!m||typeof m!=='object')return;
-      switch(m.type){
-        case 'welcome':
-          clockOffset=(m.now||Date.now())-Date.now();
-          peersMap.clear(); for(const p of (m.peers||[])) peersMap.set(p.id,p.p);
-          if(typeof m.fire==='number')fireLevel=m.fire;
-          refreshOthers(); break;
-        case 'peer': peersMap.set(m.id,m.p); refreshOthers(); break;
-        case 'leave': peersMap.delete(m.id); bubbles.delete(m.id); refreshOthers(); break;
-        case 'fire': if(typeof m.v==='number')fireLevel=clamp(m.v,0.2,1.6); break;
-        case 'act':
-          bubbles.set(m.id,{k:String(m.k),t:performance.now()});
-          if(m.k==='log'){burst();thunk();}
-          if(m.k==='wish')chime();
-          break;
-      }
-    };
-    ws.onclose=()=>{ connected=false; peersMap.clear(); refreshOthers(); scheduleReconnect(); };
-    ws.onerror=()=>{ try{ws.close();}catch(e){} };
-  }
-  function scheduleReconnect(){ setTimeout(connect, Math.min(15000, 800*Math.pow(2,retry++))); }
-  // 가만히 앉아만 있어도 연결이 유지되도록
-  setInterval(()=>send({type:'ping'}),60000);
-  document.addEventListener('visibilitychange',()=>{ if(!document.hidden&&(!ws||ws.readyState>1)){ retry=0; connect(); } });
-
-  function updateCountLine(){
-    const n=others.length+(me.seated?1:0);
-    if(!connected){ $('countLine').innerHTML='모닥불에 다가가는 중…'; return; }
-    $('countLine').innerHTML=others.length===0
-      ?(me.seated?'지금은 <b>혼자</b> 불을 보고 있어요':`지금 불 곁에 <b>아무도</b> 없어요`)
-      :`지금 <b>${n}명</b>이 불 곁에 앉아 있어요`;
-  }
-
-  // ---------- 행동 ----------
-  function doAct(k){
-    bubbles.set('me',{k,t:performance.now()});
-    send({type:'act',k});
-  }
-  let logCooldown=0;
-  $('logBtn').addEventListener('click',()=>{
-    if(!me.seated||performance.now()<logCooldown)return;
-    logCooldown=performance.now()+3500;
-    $('logBtn').disabled=true;setTimeout(()=>$('logBtn').disabled=false,3500);
-    fireLevel=clamp(fireLevel+0.22,0.2,1.6);burst();thunk();doAct('log');
-    if(fireLevel>1.45)toast('불이 활활 타올라요 🔥');
-  });
-
-  // 마시멜로: 꾹 누르고 있는 동안 굽기
-  let roasting=false;
-  const mb=$('mallowBtn');
-  function startRoast(e){e.preventDefault();if(!me.seated)return;roasting=true;if(me.roast==null)me.roast=0;mb.classList.add('on');}
-  function endRoast(){
-    if(!roasting)return;roasting=false;mb.classList.remove('on');
-    const p=me.roast;if(p==null)return;
-    if(p<0.25){toast('아직 하얘요. 조금 더 구워요');return;}
-    let msg;
-    if(p<0.55)msg='살짝 노릇. 말랑해요 🍡';
-    else if(p<0.85)msg='완벽한 황금빛! 🤤';
-    else if(p<1.05)msg='겉바속촉, 진한 갈색';
-    else msg='앗… 새까맣게 탔어요 🔥';
-    mallowsEaten++;store.set('eaten',mallowsEaten);
-    toast(msg+`  (오늘까지 ${mallowsEaten}개)`);
-    me.roast=null;pushPresence();
-  }
-  mb.addEventListener('pointerdown',startRoast);
-  addEventListener('pointerup',endRoast);
-  addEventListener('pointercancel',endRoast);
-  mb.addEventListener('contextmenu',e=>e.preventDefault());
-
-  $('emoteBtn').addEventListener('click',()=>$('emotes').classList.toggle('show'));
-  $('emotes').addEventListener('click',e=>{const b=e.target.closest('button');if(!b||!me.seated)return;doAct(b.dataset.e);$('emotes').classList.remove('show');});
-
-  $('soundBtn').addEventListener('click',()=>{
-    initAudio();soundOn=!soundOn;
-    if(actx&&actx.state==='suspended')actx.resume().catch(()=>{});
-    $('soundBtn').classList.toggle('on',soundOn);
-    $('soundBtn').querySelector('.i').textContent=soundOn?'🔊':'🔈';
-    store.set('sound',soundOn);
-  });
-
-  // 초대 링크
-  $('inviteBtn').addEventListener('click',async()=>{
-    const url=location.origin+location.pathname;
-    try{ if(navigator.share){ await navigator.share({title:'모닥불, 잠깐 쉬어가요',text:'말없이 같이 불 보러 올래?',url}); return; } }catch(e){ if(e&&e.name==='AbortError')return; }
-    try{ await navigator.clipboard.writeText(url); toast('링크를 복사했어요. 친구에게 보내보세요'); }
-    catch(e){ toast(url); }
-  });
-
-  // 소원
-  $('wishBtn').addEventListener('click',()=>{$('wishModal').classList.remove('hide');$('wishIn').value='';setTimeout(()=>$('wishIn').focus(),50);});
-  $('wishCancel').addEventListener('click',()=>$('wishModal').classList.add('hide'));
-  function makeWish(){
-    const w=$('wishIn').value.trim();$('wishModal').classList.add('hide');$('wishBtn').style.display='none';wishWindowUntil=0;
-    if(!w)return;
-    const list=store.get('wishes',[]);list.push({w,t:Date.now()});store.set('wishes',list.slice(-50));
-    chime();doAct('wish');toast('별똥별에 소원을 빌었어요 ✨');
-  }
-  $('wishOk').addEventListener('click',makeWish);
-  $('wishIn').addEventListener('keydown',e=>{if(e.key==='Enter')makeWish();});
-
-  // 강아지 쓰다듬기
-  let dogRect=null;
-  cv.addEventListener('click',e=>{
-    if(dogRect&&e.clientX>dogRect.x&&e.clientX<dogRect.x+dogRect.w&&e.clientY>dogRect.y&&e.clientY<dogRect.y+dogRect.h){dogPet=performance.now();}
-    $('emotes').classList.remove('show');
-  });
-
-  // 입장
-  const sw=$('swatches');
-  COLORS.forEach(c=>{const b=document.createElement('button');b.style.background=c;b.setAttribute('aria-label','색 '+c);if(c===me.color)b.classList.add('sel');b.onclick=()=>{me.color=c;[...sw.children].forEach(x=>x.classList.toggle('sel',x===b));};sw.appendChild(b);});
-  $('nickIn').value=me.nick;
-  function enter(){
-    let n=$('nickIn').value.trim().replace(/[\u0000-\u001f\u200b-\u200f\u202a-\u202e]/g,'');
-    if(!n)n=ADJ[Math.floor(Math.random()*ADJ.length)]+' '+NOUN[Math.floor(Math.random()*NOUN.length)];
-    me.nick=n.slice(0,10);store.set('nick',me.nick);store.set('color',me.color);
-    me.seated=true;me.since=Date.now();
-    $('intro').classList.add('hide');
-    if(store.get('sound',true)){initAudio();soundOn=true;if(actx&&actx.state==='suspended')actx.resume().catch(()=>{});$('soundBtn').classList.add('on');$('soundBtn').querySelector('.i').textContent='🔊';}
-    updateCountLine();pushPresence();
-    setTimeout(()=>doAct('nod'),400);
-  }
-  $('enterBtn').addEventListener('click',enter);
-  $('nickIn').addEventListener('keydown',e=>{if(e.key==='Enter')enter();});
-
-  // ---------- 그리기 ----------
-  function drawSky(t){
-    const g=ctx.createLinearGradient(0,0,0,horizon());
-    g.addColorStop(0,'#05060c');g.addColorStop(0.6,'#0d1222');g.addColorStop(1,'#1a1a2a');
-    ctx.fillStyle=g;ctx.fillRect(0,0,W,horizon()+2);
-    for(const s of starsArr){const a=0.35+0.65*(0.5+0.5*Math.sin(t*s.sp+s.p));ctx.fillStyle=`rgba(255,248,230,${a*0.85})`;ctx.fillRect(s.x,s.y,s.s,s.s);}
-    // 달
-    const mx=W*0.8,my=H*0.14,mr=22*S;
-    const mg=ctx.createRadialGradient(mx,my,mr*0.5,mx,my,mr*5);mg.addColorStop(0,'rgba(240,230,200,.18)');mg.addColorStop(1,'rgba(240,230,200,0)');
-    ctx.fillStyle=mg;ctx.beginPath();ctx.arc(mx,my,mr*5,0,6.28);ctx.fill();
-    ctx.fillStyle='#efe6cc';ctx.beginPath();ctx.arc(mx,my,mr,0,6.28);ctx.fill();
-    ctx.fillStyle='#0d1222';ctx.beginPath();ctx.arc(mx+mr*0.45,my-mr*0.2,mr*0.92,0,6.28);ctx.fill();
-  }
-  function drawShootingStar(now){
-    const m=Math.floor(now/60000);
-    for(const mm of [m-1,m]){
-      const st=shootingStarFor(mm);if(!st)continue;
-      const dtm=now-st.start;
-      if(dtm>=0&&dtm<st.dur){
-        const u=dtm/st.dur,x0=st.x*W,y0=st.y*H,L=st.len*W;
-        const hx=x0+Math.cos(st.ang)*L*u,hy=y0+Math.sin(st.ang)*L*u;
-        const tx=hx-Math.cos(st.ang)*L*0.35,ty=hy-Math.sin(st.ang)*L*0.35;
-        const g=ctx.createLinearGradient(tx,ty,hx,hy);g.addColorStop(0,'rgba(255,240,200,0)');g.addColorStop(1,`rgba(255,250,230,${1-u*0.6})`);
-        ctx.strokeStyle=g;ctx.lineWidth=2*S;ctx.beginPath();ctx.moveTo(tx,ty);ctx.lineTo(hx,hy);ctx.stroke();
-        if(lastStarStart!==st.start&&me.seated){lastStarStart=st.start;wishWindowUntil=now+6000;$('wishBtn').style.display='block';}
-      }
-    }
-    if(wishWindowUntil&&now>wishWindowUntil&&$('wishModal').classList.contains('hide')){wishWindowUntil=0;$('wishBtn').style.display='none';}
-  }
-  function pine(x,base,h,w,col){
-    ctx.fillStyle=col;ctx.beginPath();
-    for(let i=0;i<3;i++){const y0=base-h*(i*0.28),hh=h*(0.55-i*0.06),ww=w*(1-i*0.22);ctx.moveTo(x-ww/2,y0);ctx.lineTo(x,y0-hh);ctx.lineTo(x+ww/2,y0);}
-    ctx.fill();ctx.fillRect(x-w*0.05,base,w*0.1,h*0.06);
-  }
-  function drawGround(glow){
-    const hz=horizon();
-    for(const tr of treesBack)pine(tr.x,hz+4*S,tr.h,tr.w,'#0a0e16');
-    const g=ctx.createLinearGradient(0,hz,0,H);g.addColorStop(0,'#141318');g.addColorStop(1,'#0a090c');
-    ctx.fillStyle=g;ctx.fillRect(0,hz,W,H-hz);
-    // 땅에 비치는 불빛
-    const fx=fireX(),fy=fireY(),R=Math.max(W,H)*0.55*glow;
-    ctx.save();ctx.translate(fx,fy);ctx.scale(1,0.45);
-    const rg=ctx.createRadialGradient(0,0,0,0,0,R);rg.addColorStop(0,'rgba(255,150,60,.45)');rg.addColorStop(0.35,'rgba(200,90,40,.16)');rg.addColorStop(1,'rgba(120,50,30,0)');
-    ctx.fillStyle=rg;ctx.beginPath();ctx.arc(0,0,R,0,6.28);ctx.fill();ctx.restore();
-  }
-  function drawFrontTrees(glow){
-    for(const tr of treesFront){
-      const d=Math.abs(tr.x-W/2)/W;const lit=clamp(0.35-d,0,0.3)*glow;
-      pine(tr.x,H*0.53+tr.h*0.15,tr.h,tr.w,`rgb(${8+lit*90|0},${9+lit*40|0},${12+lit*15|0})`);
-    }
-  }
-  function drawFirePit(){
-    const fx=fireX(),fy=fireY();
-    // 돌
-    for(let i=0;i<11;i++){const a=i/11*6.28,x=fx+Math.cos(a)*44*S,y=fy+Math.sin(a)*15*S+4*S;const lit=Math.sin(a)<0?0.5:1;
-      ctx.fillStyle=`rgb(${(55+30*lit)|0},${(48+20*lit)|0},${(46+12*lit)|0})`;ctx.beginPath();ctx.ellipse(x,y,11*S,7*S,0,0,6.28);ctx.fill();}
-    // 장작
-    ctx.lineCap='round';
-    [[-0.5,'#4a2c1a'],[0.5,'#553220'],[0.05,'#3f2416']].forEach(([a,c])=>{ctx.strokeStyle=c;ctx.lineWidth=10*S;ctx.beginPath();ctx.moveTo(fx-Math.cos(a)*30*S,fy+Math.sin(a)*8*S);ctx.lineTo(fx+Math.cos(a)*30*S,fy-Math.sin(a)*8*S);ctx.stroke();});
-    // 숯불
-    const eg=ctx.createRadialGradient(fx,fy,0,fx,fy,34*S);eg.addColorStop(0,`rgba(255,120,40,${0.5+fireLevel*0.3})`);eg.addColorStop(1,'rgba(255,60,20,0)');
-    ctx.fillStyle=eg;ctx.beginPath();ctx.ellipse(fx,fy,34*S,12*S,0,0,6.28);ctx.fill();
-  }
-  function drawFire(dt){
-    ctx.save();ctx.globalCompositeOperation='lighter';
-    for(let i=parts.length-1;i>=0;i--){const p=parts[i];p.life+=dt;if(p.life>p.max){parts.splice(i,1);continue;}
-      const u=p.life/p.max;p.x+=p.vx*dt+(fireX()-p.x)*dt*1.6;p.y+=p.vy*dt;
-      const r=p.size*(1-u*0.75);ctx.fillStyle=fireColor(u,(1-u)*0.42);ctx.beginPath();ctx.arc(p.x,p.y,r,0,6.28);ctx.fill();}
-    for(let i=sparks.length-1;i>=0;i--){const p=sparks[i];p.life+=dt;if(p.life>p.max){sparks.splice(i,1);continue;}
-      p.vx+=(Math.random()-.5)*60*S*dt;p.vy+=20*S*dt;p.x+=p.vx*dt;p.y+=p.vy*dt;const u=p.life/p.max;
-      ctx.fillStyle=`rgba(255,${180-u*80|0},80,${1-u})`;ctx.fillRect(p.x,p.y,2*S,2*S);}
-    ctx.restore();
-  }
-  function mallowColor(p){
-    if(p<0.3)return '#fbf6ec';
-    if(p<0.6)return '#f2d7a0';
-    if(p<0.85)return '#d99a4e';
-    if(p<1.05)return '#8a5226';
-    return '#2a1a12';
-  }
-  const BUBBLE={log:'🪵',nod:'🙂',warm:'🤲',yawn:'🥱',look:'🌌',sleep:'💤',wish:'✨'};
-  function drawCamper(x,y,ang,col,nick,roast,bub,isMe,sinceT,glow,t,key){
-    const sc=S*(0.85+0.25*Math.sin(ang)); // 앞쪽일수록 크게
-    const back=Math.sin(ang)>0.25;         // 화면 아래쪽 = 뒷모습
-    const breathe=Math.sin(t*1.6+hashStr(key)%10)*1.2*sc;
-    const fx=fireX(),fy=fireY();
-    const dirx=(fx-x)/Math.hypot(fx-x,fy-y);
-    ctx.save();ctx.translate(x,y);
-    // 그림자
-    ctx.fillStyle='rgba(0,0,0,.35)';ctx.beginPath();ctx.ellipse(-dirx*10*sc,6*sc,30*sc,8*sc,0,0,6.28);ctx.fill();
-    // 통나무 의자
-    ctx.fillStyle='#3a2416';ctx.beginPath();ctx.ellipse(0,2*sc,24*sc,7*sc,0,0,6.28);ctx.fill();
-    // 담요 두른 몸
-    ctx.fillStyle=col;ctx.beginPath();
-    ctx.moveTo(-22*sc,0);ctx.quadraticCurveTo(-24*sc,-34*sc+breathe,0,-44*sc+breathe);ctx.quadraticCurveTo(24*sc,-34*sc+breathe,22*sc,0);ctx.closePath();ctx.fill();
-    // 불빛 쪽 하이라이트
-    const hl=ctx.createLinearGradient(-24*sc*Math.sign(dirx||1),0,24*sc*Math.sign(dirx||1),0);
-    hl.addColorStop(0,'rgba(0,0,0,.35)');hl.addColorStop(1,`rgba(255,160,70,${0.18+0.18*glow})`);
-    if(!back){ctx.fillStyle=`rgba(255,150,60,${0.12+0.15*glow})`;}else{ctx.fillStyle='rgba(0,0,0,.25)';}
-    ctx.fill();
-    ctx.fillStyle=hl;ctx.fill();
-    // 머리
-    const hy=-52*sc+breathe;
-    ctx.fillStyle=back?'#3b2a22':'#e9c39b';ctx.beginPath();ctx.arc(0,hy,12*sc,0,6.28);ctx.fill();
-    if(!back){
-      ctx.fillStyle=`rgba(255,140,60,${0.15+0.2*glow})`;ctx.beginPath();ctx.arc(0,hy,12*sc,0,6.28);ctx.fill();
-      const sleepy=bub&&(bub.k==='sleep'||bub.k==='yawn');
-      ctx.fillStyle='#2a1c14';
-      if(sleepy){ctx.fillRect(-5*sc,hy-1*sc,3.5*sc,1.2*sc);ctx.fillRect(1.5*sc,hy-1*sc,3.5*sc,1.2*sc);}
-      else{ctx.beginPath();ctx.arc(-3.5*sc,hy,1.4*sc,0,6.28);ctx.arc(3.5*sc,hy,1.4*sc,0,6.28);ctx.fill();}
-      ctx.fillStyle='rgba(230,110,100,.45)';ctx.beginPath();ctx.arc(-7*sc,hy+4*sc,2.2*sc,0,6.28);ctx.arc(7*sc,hy+4*sc,2.2*sc,0,6.28);ctx.fill();
-    }
-    // 털모자
-    ctx.fillStyle=col;ctx.beginPath();ctx.arc(0,hy-3*sc,12.5*sc,Math.PI,0);ctx.fill();
-    ctx.fillStyle='rgba(255,255,255,.85)';ctx.fillRect(-12.5*sc,hy-4*sc,25*sc,3.5*sc);
-    ctx.beginPath();ctx.arc(0,hy-16*sc,3.5*sc,0,6.28);ctx.fill();
-    ctx.restore();
-    // 마시멜로 꼬챙이
-    if(typeof roast==='number'){
-      const sx=x+dirx*10*sc,sy=y-28*sc,ex=lerp(x,fx,0.72),ey=lerp(y-28*sc,fy-26*S,0.8);
-      ctx.strokeStyle='#8b6a45';ctx.lineWidth=2*S;ctx.beginPath();ctx.moveTo(sx,sy);ctx.lineTo(ex,ey);ctx.stroke();
-      ctx.fillStyle=mallowColor(roast);ctx.beginPath();ctx.ellipse(ex,ey,6*S,5*S,0,0,6.28);ctx.fill();
-      if(roast>1.05&&Math.random()<0.3){sparks.push({x:ex,y:ey,vx:(Math.random()-.5)*20*S,vy:-40*S,life:0,max:0.6});}
-    }
-    // 이름
-    ctx.font=`${Math.round(12*Math.max(sc,0.8))}px "Gowun Dodum", sans-serif`;ctx.textAlign='center';
-    ctx.fillStyle=isMe?'rgba(255,220,170,.95)':'rgba(240,225,200,.7)';
-    const mins=Math.floor((Date.now()-sinceT)/60000);
-    ctx.fillText(nick+(isMe?' (나)':''),x,y+22*sc);
-    if(mins>=1){ctx.fillStyle='rgba(200,185,160,.45)';ctx.font=`${Math.round(10*Math.max(sc,0.8))}px "Gowun Dodum", sans-serif`;ctx.fillText(`불멍 ${mins}분`,x,y+35*sc);}
-    // 말풍선(몸짓)
-    if(bub){const age=(performance.now()-bub.t)/1000;if(age<3.2){
-      const a=age<0.2?age/0.2:age>2.6?(3.2-age)/0.6:1;
-      ctx.globalAlpha=a;ctx.font=`${Math.round(22*sc)}px sans-serif`;ctx.fillText(BUBBLE[bub.k]||'·',x,y-80*sc-age*6*sc);ctx.globalAlpha=1;}}
-  }
-  function drawDog(t,glow){
-    const x=fireX()+Math.min(W*0.17,150*S)*1.15,y=fireY()+10*S,s=S;
-    dogRect={x:x-30*s,y:y-26*s,w:60*s,h:36*s};
-    ctx.fillStyle='rgba(0,0,0,.3)';ctx.beginPath();ctx.ellipse(x,y+6*s,28*s,6*s,0,0,6.28);ctx.fill();
-    const br=Math.sin(t*1.2)*1.2*s;
-    ctx.fillStyle='#b98a5a';ctx.beginPath();ctx.ellipse(x,y-6*s,24*s,11*s+br,0,0,6.28);ctx.fill();
-    ctx.beginPath();ctx.ellipse(x-20*s,y-6*s,10*s,8.5*s,0,0,6.28);ctx.fill();
-    ctx.fillStyle='#8a6038';ctx.beginPath();ctx.ellipse(x-25*s,y-10*s,4*s,7*s,0.5,0,6.28);ctx.fill();
-    ctx.fillStyle=`rgba(255,140,60,${0.12+0.15*glow})`;ctx.beginPath();ctx.ellipse(x-6*s,y-8*s,22*s,10*s,0,0,6.28);ctx.fill();
-    ctx.fillStyle='#2a1c14';ctx.fillRect(x-24*s,y-7*s,4*s,1.2*s);
-    ctx.fillStyle='#b98a5a';const wag=performance.now()-dogPet<2500?Math.sin(t*18)*0.6:0.15;
-    ctx.save();ctx.translate(x+22*s,y-6*s);ctx.rotate(-0.6+wag);ctx.fillRect(0,-2*s,12*s,4*s);ctx.restore();
-    const petAge=(performance.now()-dogPet)/1000;
-    ctx.textAlign='center';
-    if(petAge<2.5){ctx.globalAlpha=1-petAge/2.5;ctx.font=`${16*s}px sans-serif`;ctx.fillText('💛',x-16*s,y-26*s-petAge*14*s);ctx.globalAlpha=1;}
-    else{const z=(t*0.6)%3;ctx.fillStyle=`rgba(230,220,200,${0.6-z*0.2})`;ctx.font=`${11*s+z*3*s}px "Gowun Dodum",sans-serif`;ctx.fillText('z',x-28*s+z*6*s,y-22*s-z*10*s);}
-  }
-
-  // ---------- 루프 ----------
-  let lastT=performance.now(), presAcc=0;
-  function frame(nowP){
-    const dt=Math.min(0.05,(nowP-lastT)/1000);lastT=nowP;const t=nowP/1000,now=Date.now();
-    // 불 세기 자연 감소
-    fireLevel=Math.max(0.22,fireLevel-dt*0.006);
-    const flick=0.9+0.1*Math.sin(t*9)+0.05*Math.sin(t*23);
-    const glow=clamp(fireLevel*flick,0.2,1.6);
-    // 마시멜로
-    if(roasting&&me.roast!=null){me.roast+=dt*(0.12+fireLevel*0.12);presAcc+=dt;if(presAcc>0.25){presAcc=0;pushPresence();}}
-    // 소리
-    if(actx&&noiseGain){noiseGain.gain.setTargetAtTime(soundOn?0.05+fireLevel*0.05:0,actx.currentTime,0.3);if(soundOn&&Math.random()<dt*(2+fireLevel*7))pop(0.08+fireLevel*0.08);}
-
-    ctx.clearRect(0,0,W,H);
-    drawSky(t);drawShootingStar(now);drawGround(glow);drawFrontTrees(glow);
-
-    // 자리 배치: 나는 항상 앞쪽 가운데, 다른 사람들은 불 둘레에 고르게
-    const list=[];
-    if(me.seated)list.push({key:'me',nick:me.nick,color:me.color,roast:me.roast,since:me.since,isMe:true});
-    const shown=others.slice(0,15);
-    for(const p of shown){const pr=p.presence;list.push({key:p.peer,nick:String(pr.nick).slice(0,10),color:/^#[0-9a-f]{6}$/i.test(pr.color)?pr.color:'#8a8f98',roast:typeof pr.roast==='number'?clamp(pr.roast,0,1.4):null,since:typeof pr.since==='number'?Math.min(pr.since,now):now,isMe:false});}
-    const N=Math.max(list.length,1),rx=Math.min(W*0.38,330*S),ry=Math.max(rx*0.4,70*S);
-    const seats=list.map((c,i)=>{const a=Math.PI/2+i*(Math.PI*2/N)+(N===2&&i===1?0:0);return {...c,ang:a,x:fireX()+Math.cos(a)*rx,y:fireY()+Math.sin(a)*ry+18*S};});
-    const behind=seats.filter(s=>s.y<fireY()), front=seats.filter(s=>s.y>=fireY());
-    behind.sort((a,b)=>a.y-b.y);front.sort((a,b)=>a.y-b.y);
-    for(const s of behind)drawCamper(s.x,s.y,s.ang,s.color,s.nick,s.roast,bubbles.get(s.key),s.isMe,s.since,glow,t,s.key);
-    drawFirePit();spawnFire(dt);drawFire(dt);
-    // 불빛 전체 은은하게
-    ctx.save();ctx.globalCompositeOperation='lighter';const R=260*S*glow;const og=ctx.createRadialGradient(fireX(),fireY()-30*S,0,fireX(),fireY()-30*S,R);og.addColorStop(0,`rgba(255,140,50,${0.18*glow})`);og.addColorStop(1,'rgba(255,100,40,0)');ctx.fillStyle=og;ctx.fillRect(fireX()-R,fireY()-30*S-R,R*2,R*2);ctx.restore();
-    drawDog(t,glow);
-    for(const s of front)drawCamper(s.x,s.y,s.ang,s.color,s.nick,s.roast,bubbles.get(s.key),s.isMe,s.since,glow,t,s.key);
-    if(others.length>shown.length){ctx.fillStyle='rgba(240,225,200,.6)';ctx.font=`${12*S}px "Gowun Dodum",sans-serif`;ctx.textAlign='center';ctx.fillText(`그 밖에 ${others.length-shown.length}명이 어둠 속에 앉아 있어요`,W/2,fireY()-ry-90*S);}
-
-    // HUD
-    if(me.seated){const m=Math.floor((now-me.since)/60000);const lvl=fireLevel>1.2?'활활':fireLevel>0.7?'타닥타닥':fireLevel>0.4?'은은하게':'잔불만 남았어요 · 장작을 넣어주세요';
-      $('timeLine').textContent=`불멍 ${m}분째 · 불길 ${lvl}`;}
-    requestAnimationFrame(frame);
-  }
-
-  resize();updateCountLine();
-  if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>{});
-  requestAnimationFrame(frame);
-  connect();
-})();
-</script>
+<script type="module" src="/game.js"></script>
 </body>
 </html>

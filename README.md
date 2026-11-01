@@ -1,69 +1,70 @@
-# 🔥 모닥불, 잠깐 쉬어가요
+# 🔥 모닥불 캠핑장
 
-말없이 같이 불을 보는 온라인 캠핑장이에요.
-링크로 들어온 사람은 누구나 모닥불 둘레에 캐릭터로 앉고, 장작 넣기·마시멜로 굽기·몸짓·별똥별 소원을 다 같이 실시간으로 봐요.
+같이 걷고, 불 앞에 앉고, 이야기하는 **3D 온라인 캠핑장**이에요.
+링크로 들어온 사람은 누구나 캐릭터로 캠핑장을 돌아다니고, 가까이 있는 사람과 말풍선으로 이야기해요.
 
-- 외부 라이브러리가 하나도 없어요. Node.js만 있으면 돌아가요 (Node 18 이상).
-- 파일 구성
-  - `server.js`: 실시간 서버 (접속자, 자리, 몸짓, 모두가 같이 쓰는 불 세기)
-  - `public/index.html`: 게임 화면 전체
-  - `public/og.png`: 카카오톡·인스타 등에 링크를 붙였을 때 보이는 미리보기 이미지
-  - `public/favicon.svg`: 브라우저 탭 아이콘
+## 할 수 있는 것
+| 장소 | 놀이 |
+|---|---|
+| 🔥 모닥불 광장 | 장작 넣기(모두의 불이 같이 커져요), 마시멜로 굽기, 🍠 군고구마 묻었다 꺼내기, 🔥 불멍 모드 |
+| 🥩 바비큐 그릴 | 고기 굽기 (레어 → 미디엄 → 웰던 → 숯) |
+| 🌊 호숫가 | 선착장 끝에서 🎣 낚시 (황금 잉어는 아주 드물어요) |
+| ⛺ 텐트촌 | 텐트에 들어가 쉬기 (빗소리만 들려요) |
+| 🌌 별 언덕 | 별똥별이 떨어지면 소원 빌기 |
+| 🌲 숲길 | 반딧불이 산책 |
+| 어디서나 | 🍺 한잔 · 🥂 건배, 🎆 불꽃 쏘기(모두에게 보여요), 🎇 손불꽃, 몸짓 7가지 |
 
----
+- **이동:** 땅을 클릭(탭)하면 길을 찾아 걸어가요. 방향키/WASD도 돼요. 오른쪽 아래 지도를 눌러도 이동해요.
+- **채팅:** 14m 안에 있는 사람에게만 들려요. 욕설은 ♡로 바뀌고, 링크는 막혀요. 이름을 누르면 숨기기/신고할 수 있어요.
+- **날씨:** 맑음, 흐림, 비, 눈, 안개가 5~11분마다 모두에게 똑같이 바뀌어요. 비가 오면 불이 빨리 약해져요.
+- **멈추면 앉기:** 통나무 의자, 벤치, 선착장 끝에 다가가 멈추면 자동으로 앉아요.
 
-## 1. 내 컴퓨터에서 먼저 켜보기 (선택)
-
-1. https://nodejs.org 에서 LTS 버전을 설치해요.
-2. 이 폴더에서 터미널을 열고 실행해요.
-   ```
-   npm start
-   ```
-3. 브라우저로 http://localhost:3000 에 들어가요. 창을 두 개 열면 둘이 같이 앉은 모습을 볼 수 있어요.
-
----
-
-## 2. 인터넷에 올려서 링크 만들기 (Render, 무료)
-
-### ① GitHub에 올리기
-1. https://github.com 에 가입하고 로그인해요.
-2. 오른쪽 위 **+** → **New repository** → 이름에 `campfire`를 적고 **Create repository**를 눌러요.
-3. 다음 화면에서 **uploading an existing file** 링크를 누르고, 이 폴더 안의 파일을 **전부** 끌어다 놓아요
-   (`server.js`, `package.json`, `README.md`, `public` 폴더째로). 그다음 **Commit changes**를 눌러요.
-
-### ② Render에서 서버 켜기
-1. https://render.com 에 GitHub 계정으로 가입해요.
-2. **New +** → **Web Service** → 방금 만든 `campfire` 저장소를 골라요.
-3. 설정은 이렇게 해요.
-   | 항목 | 값 |
-   |---|---|
-   | Language | Node |
-   | Build Command | `npm install` |
-   | Start Command | `npm start` |
-   | Instance Type | Free |
-4. **Deploy Web Service**를 누르고 1~3분 기다려요.
-5. 위쪽에 생기는 `https://campfire-xxxx.onrender.com` 주소가 바로 공유할 링크예요. 🎉
-
-### 무료 플랜에서 알아둘 점
-- 15분 동안 아무도 없으면 서버가 잠들어요. 다음 사람이 들어올 때 깨어나는 데 1분쯤 걸려요.
-  누군가 앉아 있는 동안에는 잠들지 않아요.
-- 항상 바로 열리게 하려면 Render 설정에서 Instance Type을 유료(Starter, 월 7달러)로 바꾸면 돼요.
-
-### 수정하고 다시 올리기
-GitHub 저장소에서 파일을 고치거나 새로 올리면 Render가 알아서 다시 배포해요.
+## 파일 구성
+- `server.js`: 실시간 서버 (위치, 근거리 채팅, 욕설 거르기, 신고 기록, 날씨, 불 세기). 외부 라이브러리가 없어요.
+- `public/index.html`: 화면 틀과 버튼
+- `public/game.js`: 3D 캠핑장 전체
+- `public/vendor/three.module.min.js`: 3D 엔진 Three.js (r160, MIT 라이선스)
+- `public/og.png`: 카톡·인스타 링크 미리보기 이미지
 
 ---
 
-## 3. 내 마음대로 바꿔보기
+## 배포 (Render)
+GitHub 저장소에 올리면 Render가 알아서 다시 배포해요. 처음 설정은 이렇게 해요.
 
+| 항목 | 값 |
+|---|---|
+| Language | Node |
+| Build Command | `npm install` |
+| Start Command | `npm start` |
+
+### 환경 변수 (Render → Environment)
+| 이름 | 설명 |
+|---|---|
+| `DONATE_URL` | 후원 링크 (예: 투네이션, 카카오페이 송금 링크, Buy Me a Coffee). `https://`로 시작하면 오른쪽 위에 ☕ 후원하기 버튼이 생겨요 |
+| `MAX_CLIENTS` | 최대 동시 접속자 (기본 300) |
+| `START_WEATHER` | 서버가 켜질 때 날씨 (clear, cloudy, rain, snow, fog). 테스트용 |
+
+### 신고 확인
+누군가 신고하면 Render 대시보드의 **Logs**에 `[신고]`로 시작하는 줄이 남아요.
+
+### 무료 플랜 참고
+15분 동안 아무도 없으면 서버가 잠들고, 다음 사람이 들어올 때 1분쯤 걸려요. 항상 바로 열리게 하려면 Instance Type을 유료(Starter)로 바꾸면 돼요.
+
+---
+
+## 내 컴퓨터에서 켜보기
+Node.js 18 이상을 설치한 뒤:
+```
+npm start
+```
+http://localhost:3000 에 들어가요. 창을 두 개 열면 둘이 같이 있는 모습을 볼 수 있어요.
+
+## 바꿔보기
 | 바꾸고 싶은 것 | 찾을 곳 |
 |---|---|
-| 제목·문구 | `public/index.html`의 `모닥불`, `잠깐 쉬어가요` 같은 글자 |
-| 캐릭터 색 | `index.html`의 `COLORS` 목록 |
-| 자동 이름 | `index.html`의 `ADJ`(형용사), `NOUN`(동물) 목록 |
-| 몸짓 종류 | `index.html`의 `data-e` 버튼과 `BUBBLE` 목록 + `server.js`의 `ACTS` |
-| 불이 꺼지는 속도 | `server.js`의 `DECAY`와 `index.html`의 `dt*0.006` (둘을 같게 맞춰요) |
-| 장작 하나로 커지는 정도 | `server.js`의 `LOG_BOOST` |
-| 최대 동시 접속자 | Render의 Environment에 `MAX_CLIENTS` 값 추가 (기본 300) |
-
-화면에는 한 번에 16명까지 앉고, 그보다 많으면 "그 밖에 N명이 어둠 속에 앉아 있어요"라고 보여줘요.
+| 욕설 단어 | `server.js`의 `BAD` 목록 |
+| 채팅이 들리는 거리 | `server.js`의 `CHAT_RANGE` |
+| 날씨 확률 | `server.js`의 `WEATHERS` |
+| 물고기 종류·확률 | `public/game.js`의 `FISH` |
+| 군고구마 익는 시간 | `public/game.js`의 `POTATO_GOOD` |
+| 캐릭터 색, 자동 이름 | `public/game.js`의 `COLORS`, `ADJ`, `NOUN` |
