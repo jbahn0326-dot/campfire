@@ -90,12 +90,14 @@ const walkH = (x, z) => onDock(x, z) ? 0.32 : inBath(x, z) ? -0.5 : Math.max(gro
 // =====================================================================
 const canvas = $('scene');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance' });
-let hiQuality = store.get('hi', !isTouch);
-let bloomOn = store.get('bloom', true);
-function pixelRatio() { return Math.min(window.devicePixelRatio || 1, hiQuality ? 2 : (isTouch ? 1 : 1.25)); }
+let quality = store.get('quality', isTouch ? 1 : 2);   // 0 저, 1 중, 2 고
+let bloomOn = quality >= 1;
+function pixelRatio() { return Math.min(window.devicePixelRatio || 1, [1, isTouch ? 1.25 : 1.5, 2][quality]); }
 renderer.setPixelRatio(pixelRatio());
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 1.2;
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 const scene = new THREE.Scene();
 const FOG_COLOR = new THREE.Color(0x0e1426);
 scene.fog = new THREE.FogExp2(FOG_COLOR.getHex(), 0.016);
@@ -127,8 +129,11 @@ scene.background = SKY.clear;
 
 // 빛
 const hemi = new THREE.HemisphereLight(0x6a7fc0, 0x1a140f, 1.35); scene.add(hemi);
-const moonLight = new THREE.DirectionalLight(0xa9b8ff, 0.8); moonLight.position.set(-40, 60, -30); scene.add(moonLight);
+const moonLight = new THREE.DirectionalLight(0xa9b8ff, 0.8); moonLight.position.set(-40, 60, -30); scene.add(moonLight); scene.add(moonLight.target);
+moonLight.shadow.camera.left = -22; moonLight.shadow.camera.right = 22; moonLight.shadow.camera.top = 22; moonLight.shadow.camera.bottom = -22; moonLight.shadow.camera.near = 1; moonLight.shadow.camera.far = 120; moonLight.shadow.bias = -0.0008; moonLight.shadow.normalBias = 0.04;
+const MOON_DIR = new THREE.Vector3(-40, 60, -30).normalize().multiplyScalar(60);
 const fireLight = new THREE.PointLight(0xff8a3d, 40, 0, 1.55); fireLight.position.set(0, 1.4, 0); scene.add(fireLight);
+fireLight.shadow.mapSize.set(512, 512); fireLight.shadow.camera.near = 0.5; fireLight.shadow.camera.far = 16; fireLight.shadow.bias = -0.004; fireLight.shadow.radius = 4;
 const warmLight = new THREE.PointLight(0xffb070, 6, 16, 1.8); warmLight.position.set(CAMPER.x + 1.5, 2.2, CAMPER.z + 1); scene.add(warmLight);
 const flashLight = new THREE.PointLight(0xffffff, 0, 0, 1.2); flashLight.position.set(0, 20, 0); scene.add(flashLight);
 const sideLight = new THREE.PointLight(0xffc68a, 5, 14, 1.8); scene.add(sideLight);   // 노천탕·트리 쪽 번갈아
@@ -208,13 +213,22 @@ function signTex(text, bg, fg) {
 // =====================================================================
 // 땅
 // =====================================================================
+function groundDetailTex() {
+  const S = 512, c = document.createElement('canvas'); c.width = c.height = S; const g = c.getContext('2d'), r = mulberry32(21);
+  g.fillStyle = 'rgb(218,218,218)'; g.fillRect(0, 0, S, S);
+  for (let i = 0; i < 26000; i++) { const v = 170 + r() * 80 | 0; g.fillStyle = `rgb(${v},${v},${v})`; g.fillRect(r() * S, r() * S, 1 + r() * 2, 1 + r() * 2); }
+  for (let i = 0; i < 420; i++) { const v = r() < 0.5 ? 140 + r() * 40 | 0 : 235 + r() * 20 | 0; g.fillStyle = `rgba(${v},${v},${v},.9)`; g.beginPath(); g.ellipse(r() * S, r() * S, 1.5 + r() * 4, 1 + r() * 3, r() * 3, 0, 7); g.fill(); }
+  g.lineWidth = 1.2;
+  for (let i = 0; i < 2600; i++) { const x = r() * S, y = r() * S, v = 150 + r() * 70 | 0; g.strokeStyle = `rgba(${v},${v + 10},${v},.55)`; g.beginPath(); g.moveTo(x, y); g.lineTo(x + (r() - 0.5) * 4, y - 3 - r() * 6); g.stroke(); }
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.repeat.set(48, 48); t.anisotropy = 4; return t;
+}
 const C = hex => new THREE.Color(hex);
 let groundMesh;
 {
   const SIZE = 130, SEG = 140;
   const geo = new THREE.PlaneGeometry(SIZE, SIZE, SEG, SEG); geo.rotateX(-Math.PI / 2);
   const p = geo.attributes.position, cols = [];
-  const grassA = C(0x2a3d2a), grassB = C(0x34472c), dirt = C(0x5e4a36), plaza = C(0x4f3e2e), sand = C(0x6b5c45), deep = C(0x15202a), hillC = C(0x31482d), snowC = C(0xe6edf5), stone = C(0x5d5a58);
+  const grassA = C(0x324a31), grassB = C(0x3e5534), dirt = C(0x6e5740), plaza = C(0x5f4a36), sand = C(0x6b5c45), deep = C(0x15202a), hillC = C(0x31482d), snowC = C(0xe6edf5), stone = C(0x5d5a58);
   const r = mulberry32(5), tmp = new THREE.Color();
   for (let i = 0; i < p.count; i++) {
     const x = p.getX(i), z = p.getZ(i);
@@ -230,7 +244,8 @@ let groundMesh;
   }
   geo.setAttribute('color', new THREE.Float32BufferAttribute(cols, 3));
   geo.computeVertexNormals();
-  groundMesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true }));
+  groundMesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ vertexColors: true, map: groundDetailTex() }));
+  groundMesh.receiveShadow = true;
   scene.add(groundMesh);
 }
 // 호수
@@ -312,11 +327,38 @@ const firePit = new THREE.Group(); scene.add(firePit);
 {
   const rockG = new THREE.DodecahedronGeometry(0.3, 0);
   for (let i = 0; i < 13; i++) { const a = i / 13 * Math.PI * 2; const m = new THREE.Mesh(rockG, mat(0x4f4b48, { flatShading: true })); m.position.set(Math.cos(a) * 1.1, 0.12, Math.sin(a) * 1.1); m.scale.set(1, 0.65, 1); m.rotation.set(rand(0, 3), rand(0, 3), 0); firePit.add(m); }
-  const logG = new THREE.CylinderGeometry(0.09, 0.12, 1.7, 7);
-  for (let i = 0; i < 7; i++) { const a = i / 7 * Math.PI * 2; const g = new THREE.Group(); g.rotation.y = a; const m = new THREE.Mesh(logG, mat(i % 2 ? 0x4a2c1a : 0x3a2214)); m.position.set(0.45, 0.65, 0); m.rotation.z = 0.5; g.add(m); firePit.add(g); }
+  const logG = new THREE.CylinderGeometry(0.08, 0.11, 1.15, 7);
+  for (let i = 0; i < 7; i++) { const a = i / 7 * Math.PI * 2; const g = new THREE.Group(); g.rotation.y = a; const m = new THREE.Mesh(logG, mat(i % 2 ? 0x6a4028 : 0x553220, { emissive: 0x2a0c02 })); m.position.set(0.36, 0.4, 0); m.rotation.z = 0.68; g.add(m); firePit.add(g); }
   const coal = new THREE.Mesh(new THREE.CircleGeometry(0.85, 20), new THREE.MeshBasicMaterial({ color: 0xff5a1a, transparent: true, opacity: 0.6 }));
   coal.rotation.x = -Math.PI / 2; coal.position.y = 0.04; firePit.add(coal); firePit.userData.coal = coal;
   blockers.push({ x: 0, z: 0, r: 1.5 });
+}
+
+// 모닥불 주변 소품: 주전자 삼각대, 장작 더미, 기타, 통나무
+{
+  const tri = new THREE.Group(); tri.position.set(1.9, 0, -1.0); scene.add(tri);
+  for (let k = 0; k < 3; k++) { const a = k / 3 * Math.PI * 2; const st = new THREE.Mesh(new THREE.CylinderGeometry(0.025, 0.03, 1.6, 5), mat(0x2a2a2a)); st.position.set(Math.cos(a) * 0.32, 0.75, Math.sin(a) * 0.32); st.rotation.z = Math.cos(a) * 0.38; st.rotation.x = -Math.sin(a) * 0.38; tri.add(st); }
+  const chain = new THREE.Mesh(new THREE.CylinderGeometry(0.008, 0.008, 0.45, 4), mat(0x555555)); chain.position.y = 1.3; tri.add(chain);
+  const kettle = new THREE.Mesh(new THREE.SphereGeometry(0.17, 14, 10), mat(0x2f62b8)); kettle.scale.set(1, 0.85, 1); kettle.position.y = 0.95; tri.add(kettle);
+  const spout = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.035, 0.18, 6), mat(0x2f62b8)); spout.rotation.z = -1; spout.position.set(0.18, 1.0, 0); tri.add(spout);
+  const handle = new THREE.Mesh(new THREE.TorusGeometry(0.11, 0.012, 5, 12, Math.PI), mat(0x222222)); handle.position.y = 1.08; tri.add(handle);
+  blockers.push({ x: 1.9, z: -1.0, r: 0.4 });
+  // 장작 더미
+  const wood = new THREE.Group(); wood.position.set(-2.4, 0, -4.4); wood.rotation.y = 0.5; scene.add(wood);
+  const lg = new THREE.CylinderGeometry(0.12, 0.12, 1.0, 8), lm = mat(0x7a4e2c), endM = mat(0xc09060);
+  [[-0.26, 0.12], [0, 0.12], [0.26, 0.12], [-0.13, 0.34], [0.13, 0.34], [0, 0.56]].forEach(([x, y]) => { const l = new THREE.Mesh(lg, lm); l.rotation.x = Math.PI / 2; l.position.set(x, y, 0); wood.add(l); for (const sz of [-0.5, 0.5]) { const e = new THREE.Mesh(new THREE.CircleGeometry(0.11, 8), endM); e.position.set(x, y, sz + Math.sign(sz) * 0.005); if (sz < 0) e.rotation.y = Math.PI; wood.add(e); } });
+  blockers.push({ x: -2.4, z: -4.4, r: 0.6 });
+  // 기타 (그루터기에 기대어)
+  const gt = new THREE.Group(); gt.position.set(-4.3, 0, 1.5); gt.rotation.set(0, 1.2, -0.25); scene.add(gt);
+  const wood2 = mat(0xc98a3e), dark2 = mat(0x3a2414);
+  const b1 = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 0.1, 18), wood2); b1.rotation.x = Math.PI / 2; b1.position.y = 0.25; gt.add(b1);
+  const b2 = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.18, 0.1, 18), wood2); b2.rotation.x = Math.PI / 2; b2.position.y = 0.55; gt.add(b2);
+  const hole = new THREE.Mesh(new THREE.CircleGeometry(0.06, 12), dark2); hole.position.set(0, 0.42, 0.052); gt.add(hole);
+  const neck = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.6, 0.04), dark2); neck.position.y = 0.95; gt.add(neck);
+  const headG2 = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.16, 0.05), dark2); headG2.position.y = 1.32; gt.add(headG2);
+  // 쓰러진 통나무
+  const fl = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.36, 2.6, 12), mat(0x5a3a26)); fl.rotation.z = Math.PI / 2; fl.rotation.y = 0.9; fl.position.set(-5.4, 0.3, -1.8); scene.add(fl);
+  blockers.push({ x: -5.4, z: -1.8, r: 0.5 }, { x: -6.1, z: -0.9, r: 0.45 }, { x: -4.7, z: -2.7, r: 0.45 });
 }
 
 // 캠핑 의자 · 그루터기
@@ -419,9 +461,18 @@ function makeLantern(x, z) {
 const tentDoors = [];
 TENTS.forEach((t) => {
   const g = new THREE.Group(); g.position.set(t.x, groundH(t.x, t.z), t.z); g.rotation.y = t.ry; scene.add(g);
-  const body = new THREE.Mesh(new THREE.ConeGeometry(2, 2.4, 4, 1), mat(t.c, { flatShading: true })); body.rotation.y = Math.PI / 4; body.position.y = 1.2; g.add(body);
-  const doorMat = new THREE.MeshBasicMaterial({ color: 0x120c08 });
-  const door = new THREE.Mesh(new THREE.CircleGeometry(0.62, 3), doorMat); door.position.set(0, 0.62, 1.03); door.rotation.set(-0.36, 0, Math.PI / 2 * 3); door.scale.set(1, 1.35, 1); g.add(door);
+  // 벨 텐트: 낮은 원통 벽 + 원뿔 지붕 + 열린 문
+  const canvasM = mat(0xece3d0, { side: THREE.DoubleSide }), trim = mat(t.c);
+  const wall = new THREE.Mesh(new THREE.CylinderGeometry(1.95, 2.0, 0.85, 20, 1, true), canvasM); wall.position.y = 0.42; g.add(wall);
+  const roof = new THREE.Mesh(new THREE.ConeGeometry(2.05, 2.1, 20, 1, true), canvasM); roof.position.y = 1.9; g.add(roof);
+  const band = new THREE.Mesh(new THREE.CylinderGeometry(2.0, 2.0, 0.08, 20, 1, true), trim); band.position.y = 0.86; g.add(band);
+  const cap = new THREE.Mesh(new THREE.ConeGeometry(0.22, 0.3, 10), trim); cap.position.y = 3.0; g.add(cap);
+  const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.35, 5), mat(0x6b4a2e)); pole.position.y = 3.25; g.add(pole);
+  const doorMat = new THREE.MeshBasicMaterial({ color: 0x1a120c });
+  const door = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 1.25), doorMat); door.position.set(0, 0.62, 1.99); g.add(door);
+  const flap = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 1.3), canvasM); flap.position.set(0.68, 0.65, 2.02); flap.rotation.y = 0.5; g.add(flap);
+  const ropeM = new THREE.LineBasicMaterial({ color: 0xbfae8e, transparent: true, opacity: 0.7 });
+  for (let k = 0; k < 6; k++) { const a = k / 6 * Math.PI * 2 + 0.3; const pts = [new THREE.Vector3(Math.cos(a) * 1.4, 1.75, Math.sin(a) * 1.4), new THREE.Vector3(Math.cos(a) * 3.0, 0.02, Math.sin(a) * 3.0)]; g.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), ropeM)); }
   tentDoors.push(doorMat); blockers.push({ x: t.x, z: t.z, r: 1.8 });
 });
 
@@ -597,6 +648,26 @@ function addOrnament(o) {
 }
 function ornCount() { let n = 0; for (const k in ornMeshes) n += ornMeshes[k].count; return n; }
 
+// 그림자: 소품은 그림자를 드리우고, 땅과 소품이 받아요
+scene.traverse(o => {
+  if (!o.isMesh || o === groundMesh) return;
+  const basic = o.material && o.material.isMeshBasicMaterial;
+  if (!basic && !o.material.transparent) o.castShadow = true;
+  if (!basic) o.receiveShadow = true;
+});
+function applyQuality() {
+  bloomOn = quality >= 1;
+  const sh = quality >= 1;
+  renderer.shadowMap.enabled = sh;
+  moonLight.castShadow = sh; moonLight.shadow.mapSize.set(quality >= 2 ? 2048 : 1024, quality >= 2 ? 2048 : 1024);
+  if (moonLight.shadow.map) { moonLight.shadow.map.dispose(); moonLight.shadow.map = null; }
+  fireLight.castShadow = quality >= 2;
+  if (fireLight.shadow.map) { fireLight.shadow.map.dispose(); fireLight.shadow.map = null; }
+  scene.traverse(o => { if (o.material) { (Array.isArray(o.material) ? o.material : [o.material]).forEach(m => m.needsUpdate = true); } });
+  resize();
+  document.querySelectorAll('#qualityPick button').forEach((b, i) => b.classList.toggle('sel', i === quality));
+}
+
 // 반딧불이
 const FLY_N = 70;
 const flyGeo = new THREE.BufferGeometry();
@@ -615,6 +686,43 @@ scene.add(flies);
 // =====================================================================
 // 모닥불 불꽃
 // =====================================================================
+// 셰이더 불꽃 (일렁이는 진짜 불)
+const flameMat = new THREE.ShaderMaterial({
+  uniforms: { uTime: { value: 0 }, uLevel: { value: 1 } },
+  vertexShader: 'varying vec2 vUv; void main(){ vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+  fragmentShader: [
+    'uniform float uTime; uniform float uLevel; varying vec2 vUv;',
+    'float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }',
+    'float noise(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0-2.0*f); return mix(mix(hash(i), hash(i+vec2(1.0,0.0)), f.x), mix(hash(i+vec2(0.0,1.0)), hash(i+vec2(1.0,1.0)), f.x), f.y); }',
+    'float fbm(vec2 p){ float v = 0.0, a = 0.5; for (int i = 0; i < 5; i++){ v += a * noise(p); p *= 2.03; a *= 0.5; } return v; }',
+    'void main(){',
+    '  vec2 uv = vUv;',
+    '  float n = fbm(vec2(uv.x * 3.2, uv.y * 2.4 - uTime * 2.4));',
+    '  float n2 = fbm(vec2(uv.x * 6.0 + 3.0, uv.y * 4.0 - uTime * 3.6));',
+    '  float x = (uv.x - 0.5) * 2.0 + (n2 - 0.5) * 0.35 * uv.y;',
+    '  float width = (1.0 - uv.y * 0.85) * 0.9 + 0.08;',
+    '  float shape = 1.0 - smoothstep(0.0, 1.0, abs(x) / width);',
+    '  float h = uv.y + n * 0.6 - 0.12;',
+    '  float f = shape * (1.0 - smoothstep(0.18, 0.98, h));',
+    '  f = pow(clamp(f * 1.7, 0.0, 1.0), 1.4);',
+    '  vec3 col = mix(vec3(0.9, 0.18, 0.02), vec3(1.0, 0.62, 0.15), smoothstep(0.15, 0.7, f));',
+    '  col = mix(col, vec3(1.0, 0.93, 0.72), smoothstep(0.78, 1.0, f));',
+    '  gl_FragColor = vec4(col * f * (0.62 + uLevel * 0.55), f);',
+    '}'
+  ].join('\n'),
+  transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide
+});
+const flameGroup = new THREE.Group(); scene.add(flameGroup);
+{
+  const geo = new THREE.PlaneGeometry(1.5, 2.3); geo.translate(0, 1.15, 0);
+  for (let i = 0; i < 3; i++) { const m = new THREE.Mesh(geo, flameMat); m.rotation.y = i * Math.PI / 3; m.position.y = 0.15; m.renderOrder = 5; flameGroup.add(m); }
+  const geo2 = new THREE.PlaneGeometry(1.0, 1.8); geo2.translate(0, 0.9, 0);
+  const inner = new THREE.Mesh(geo2, flameMat); inner.position.set(0.15, 0.15, 0.1); inner.renderOrder = 5; flameGroup.add(inner); flameGroup.userData.bill = inner;
+}
+// 연기
+const smoke = [];
+for (let i = 0; i < 14; i++) { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: SOFT, color: 0x3a3a40, transparent: true, opacity: 0, depthWrite: false })); scene.add(s); smoke.push({ s, t: i / 14, x: 0, z: 0 }); }
+
 let fireLevel = 0.85;
 const flames = [];
 const FLAME_N = 190;
@@ -634,7 +742,7 @@ function flameColor(u, out) {
 let flameSpawnAcc = 0;
 function updateFire(dt, t) {
   const fl = fireLevel;
-  flameSpawnAcc += dt * (50 + fl * 120);
+  flameSpawnAcc += dt * (18 + fl * 40);
   for (const f of flames) {
     if (!f.s.visible && flameSpawnAcc >= 1) {
       flameSpawnAcc -= 1;
@@ -651,14 +759,17 @@ function updateFire(dt, t) {
     const sz = f.size * (u < 0.15 ? u / 0.15 : 1 - (u - 0.15) * 0.75);
     f.s.scale.set(sz * 0.7, sz * 1.6, 1);
     f.s.material.color.copy(flameColor(u, tmpCol));
-    f.s.material.opacity = (1 - u) * (u < 0.1 ? 0.16 : 0.3) * (bloomOn ? 0.62 : 1);
+    f.s.material.opacity = (1 - u) * (u < 0.1 ? 0.16 : 0.3) * (bloomOn ? 0.4 : 0.8);
   }
   if (flameSpawnAcc > 30) flameSpawnAcc = 30;
   if (Math.random() < dt * (3 + fl * 9)) sparkBurst(rand(-0.3, 0.3), 0.8, rand(-0.3, 0.3), 1, 0xffb060, 0.6, 2.4, 0.05);
   const flick = 0.85 + 0.1 * Math.sin(t * 11) + 0.06 * Math.sin(t * 23 + 1) + 0.04 * Math.sin(t * 37);
   fireLight.intensity = (20 + fl * 40) * flick * weatherFireLight;
+  flameMat.uniforms.uTime.value = t; flameMat.uniforms.uLevel.value = bloomOn ? 0 : 1; const fs = 0.95 + fl * 0.6; flameGroup.scale.set(fs, fs * (0.9 + 0.08 * Math.sin(t * 7)), fs);
+  flameGroup.userData.bill.rotation.y = Math.atan2(camera.position.x, camera.position.z);
+  smoke.forEach((m, i) => { m.t += dt * 0.12; if (m.t > 1) { m.t = 0; m.x = rand(-0.2, 0.2); m.z = rand(-0.2, 0.2); } const y = 2.2 * fs + m.t * 7; m.s.position.set(m.x + Math.sin(t * 0.5 + i) * m.t * 1.2, y, m.z + m.t * 1.5); const sc = 0.8 + m.t * 4; m.s.scale.set(sc, sc, 1); m.s.material.opacity = Math.sin(m.t * Math.PI) * 0.07 * (1 - W.rain * 0.5); });
   fireLight.position.y = 1.2 + fl * 0.4;
-  const gs = (3.5 + fl * 4.5) * flick; fireGlow.scale.set(gs, gs * 1.1, 1); fireGlow.material.opacity = (0.16 + fl * 0.1) * (bloomOn ? 0.5 : 1);
+  const gs = (3.0 + fl * 3.2) * flick; fireGlow.scale.set(gs, gs * 1.1, 1); fireGlow.material.opacity = (0.16 + fl * 0.1) * (bloomOn ? 0.22 : 0.8);
   firePit.userData.coal.material.opacity = 0.35 + fl * 0.3 * flick;
 }
 
@@ -835,6 +946,7 @@ function makeCharacter(color, ani = 0) {
   { const g = new THREE.Group(); const b = new THREE.Mesh(G.milk, M.milk); b.position.set(0, 0.05, 0.06); g.add(b); tools.milk = g; }
   { const g = new THREE.Group(); const s = new THREE.Mesh(G.stick, mat(0x777777)); s.scale.y = 0.6; s.rotation.x = Math.PI / 2 - 0.9; s.position.set(0, 0.25, 0.22); g.add(s); const tip = new THREE.Object3D(); tip.position.set(0, 0.5, 0.42); g.add(tip); g.userData.tip = tip; tools.sparkler = g; }
   for (const k in tools) { tools[k].visible = false; hand.add(tools[k]); }
+  root.traverse(o => { if (o.isMesh && o !== shadow) o.castShadow = true; });
   return { root, inner, legs, arms, headG, body, cloth, eyes, tools, towel, tail, phase: Math.random() * 6, sit: 0, ani };
 }
 const _v = new THREE.Vector3();
@@ -1573,6 +1685,7 @@ function updateCamera(dt, t) {
     camera.position.lerp(_want, Math.min(1, dt * 1.5)); camTarget.lerp(_look.set(0, 1.4 + fireLevel * 0.35, 0), Math.min(1, dt * 2));
     camera.lookAt(camTarget); return;
   }
+  if (viewMode === 'sky' && !me.moving && me.tent == null && !(skyLook && performance.now() < skyLook.until)) skyLook = { x: me.x - Math.sin(camYaw) * 40, y: 30, z: me.z - Math.cos(camYaw) * 40, until: performance.now() + 500 };
   const sky = skyLook && performance.now() < skyLook.until && !me.moving && me.tent == null;
   if (sky) {
     _want.set(tx + Math.sin(camYaw) * 6 * portrait, ty + 1.2, tz + Math.cos(camYaw) * 6 * portrait);
@@ -1630,10 +1743,46 @@ fetch('/config.json').then(r => r.json()).then(c => { if (c && c.donateUrl) { co
 $('settingsBtn').onclick = () => $('settings').classList.remove('hide');
 $('settingsClose').onclick = () => $('settings').classList.add('hide');
 $('setSound').onclick = () => setSound(!soundOn);
-$('setBloom').classList.toggle('on', bloomOn);
-$('setBloom').onclick = () => { bloomOn = !bloomOn; store.set('bloom', bloomOn); $('setBloom').classList.toggle('on', bloomOn); };
-$('setHi').classList.toggle('on', hiQuality);
-$('setHi').onclick = () => { hiQuality = !hiQuality; store.set('hi', hiQuality); $('setHi').classList.toggle('on', hiQuality); resize(); };
+document.querySelectorAll('#qualityPick button').forEach((b, i) => b.onclick = () => { quality = i; store.set('quality', i); qualityTouched = true; applyQuality(); });
+applyQuality();
+
+// 기기가 느리면 그래픽을 자동으로 낮춰요
+let qualityTouched = store.get('qualityTouched', false), perf = { t: 0, n: 0, checks: 0 };
+function perfSample(dt) {
+  if (!me.seated || qualityTouched || perf.checks >= 2 || quality === 0) return;
+  perf.t += dt; perf.n++;
+  if (perf.t >= 5) {
+    const fps = perf.n / perf.t; perf.t = 0; perf.n = 0; perf.checks++;
+    if (fps < 26) { quality--; store.set('quality', quality); applyQuality(); toast(`기기에 맞게 그래픽을 '${['저', '중', '고'][quality]}'로 낮췄어요`); }
+    else perf.checks = 2;
+  }
+}
+
+// 시점: 따라가기 ↔ 별 보기
+let viewMode = 'follow';
+$('viewBtn').onclick = () => {
+  viewMode = viewMode === 'follow' ? 'sky' : 'follow';
+  $('viewLabel').textContent = viewMode === 'follow' ? '따라가기' : '별 보기';
+  if (viewMode === 'follow') skyLook = null;
+};
+
+// 집중 타이머 (25분 집중 · 5분 휴식)
+const timer = { mode: 'focus', left: 25 * 60, running: false, last: 0 };
+function fmt(sec) { sec = Math.max(0, Math.ceil(sec)); return String(Math.floor(sec / 60)).padStart(2, '0') + ':' + String(sec % 60).padStart(2, '0'); }
+function drawTimer() { $('timerTxt').textContent = fmt(timer.left); $('timerMode').textContent = timer.mode === 'focus' ? '집중' : '휴식'; $('timerBtn').classList.toggle('on', timer.running); }
+$('timerBtn').onclick = () => { timer.running = !timer.running; timer.last = performance.now(); if (timer.running && timer.left <= 0) timer.left = timer.mode === 'focus' ? 1500 : 300; drawTimer(); if (timer.running) toast(timer.mode === 'focus' ? '⏱ 25분 집중 시작! 불 앞에서 같이 해요' : '☕ 5분 쉬어가요'); };
+$('timerBtn').addEventListener('contextmenu', e => { e.preventDefault(); timer.running = false; timer.mode = 'focus'; timer.left = 1500; drawTimer(); toast('타이머를 처음으로 돌렸어요'); });
+function updateTimer() {
+  if (!timer.running) return;
+  const n = performance.now(); timer.left -= (n - timer.last) / 1000; timer.last = n;
+  if (timer.left <= 0) {
+    playChime(); setTimeout(playChime, 600);
+    if (timer.mode === 'focus') { const c = store.get('focusDone', 0) + 1; store.set('focusDone', c); timer.mode = 'break'; timer.left = 300; toast(`🍅 집중 끝! 오늘 ${c}번째예요. 5분 쉬어요`, 3500); doAct('heart'); }
+    else { timer.mode = 'focus'; timer.left = 1500; timer.running = false; toast('☕ 휴식 끝! 다시 시작할 땐 타이머를 눌러요', 3500); }
+  }
+  drawTimer();
+}
+drawTimer();
 
 // =====================================================================
 // 입장
@@ -1683,7 +1832,7 @@ function frame(nowP) {
     updateMe(dt); updateFishing(dt, t);
     me.drinkT = Math.max(0, me.drinkT - dt);
     animateCharacter(me.char, myState(), dt, t);
-    me.char.root.visible = me.tent == null;
+    me.char.root.visible = me.tent == null && !bulmung;
     setPotato('me', me.potato != null);
   }
   for (const o of others.values()) {
@@ -1693,7 +1842,7 @@ function frame(nowP) {
     if (!hidden) animateCharacter(o.char, st, dt, t);
     placeLabel(o.label, st.x, st.y + 1.95 - st.sitT * 0.2, st.z, !hidden);
   }
-  if (me.seated) { const st = myState(); placeLabel(me.label, me.x, st.y + 1.95 - st.sitT * 0.2, me.z, me.tent == null); }
+  if (me.seated) { const st = myState(); placeLabel(me.label, me.x, st.y + 1.95 - st.sitT * 0.2, me.z, me.tent == null && !bulmung); }
   tentDoors.forEach((m, i) => { const occ = me.tent === i || [...others.values()].some(o => o.p.tent === i); m.color.setHex(occ ? 0x7a4a18 : 0x120c08); });
   const pet = (performance.now() - dogPet) / 1000;
   dog.userData.tail.rotation.z = -1 + (pet < 3 ? Math.sin(t * 20) * 0.5 : Math.sin(t * 1.2) * 0.05);
@@ -1728,7 +1877,9 @@ function frame(nowP) {
   sideLight.color.setHex(toBath ? 0xffd2a0 : 0xffe0b0); sideLight.intensity = toBath ? 6 : 4;
   updateFire(dt, t); updateRockets(dt); updatePool(small, dt); updatePool(big, dt);
   updateCamera(dt, t);
+  moonLight.target.position.set(camTarget.x, 0, camTarget.z); moonLight.position.copy(moonLight.target.position).add(MOON_DIR);
   updateWeather(dt, t, camTarget.x, camTarget.z);
+  perfSample(dt); updateTimer();
   updateShootingStar(); updateAudio(dt);
   moonGlint.material.opacity = 0.25 * moonMat.opacity;
   subAcc += dt;
