@@ -2,10 +2,13 @@
 <html lang="ko">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>모닥불 캠핑장, 잠깐 쉬어가요</title>
-<meta name="description" content="같이 걷고, 불 앞에 앉고, 이야기하는 3D 온라인 캠핑장. 장작을 넣고, 마시멜로를 굽고, 호숫가에서 낚시하고, 언덕에서 별똥별에 소원을 빌어요.">
-<meta name="theme-color" content="#0b0f1a">
+<meta name="description" content="같이 걷고, 불 앞에 앉고, 이야기하는 3D 온라인 캠핑장. 불멍, 바비큐, 낚시, 노천탕, 크리스마스 트리 꾸미기까지.">
+<meta name="theme-color" content="#0b111f">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta property="og:type" content="website">
 <meta property="og:title" content="모닥불 캠핑장, 잠깐 쉬어가요">
 <meta property="og:description" content="같이 걷고, 불 앞에 앉고, 이야기하는 3D 온라인 캠핑장">
@@ -15,128 +18,146 @@
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Gowun+Dodum&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<script type="importmap">{ "imports": { "three": "/vendor/three.module.min.js" } }</script>
 <style>
-  :root{--ink:#f3e6cf;--dim:#a99d8a;--panel:rgba(18,16,22,.74);--line:rgba(255,200,140,.16);--ember:#ff9a3d}
+  :root{--ink:#eef0f7;--dim:#9aa3bd;--navy:rgba(13,17,34,.82);--navy2:rgba(26,32,58,.9);--line:rgba(150,165,220,.14);--accent:#ff9a4a;--me:#a8321f;
+    --st:env(safe-area-inset-top,0px);--sb:env(safe-area-inset-bottom,0px)}
   *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-  html,body{margin:0;height:100%;background:#0b0f1a;color:var(--ink);font-family:"Gowun Dodum",system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;overflow:hidden;overscroll-behavior:none}
+  html,body{margin:0;height:100%;background:#0b111f;color:var(--ink);font-family:"Gowun Dodum",system-ui,-apple-system,"Apple SD Gothic Neo","Malgun Gothic",sans-serif;overflow:hidden;overscroll-behavior:none;-webkit-user-select:none;user-select:none}
   canvas#scene{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;outline:none}
+  #vignette{position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at 50% 55%,rgba(0,0,0,0) 45%,rgba(3,5,12,.55) 100%)}
   button{font:inherit;color:inherit}
-  .panel{background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+  .glass{background:var(--navy);border:1px solid var(--line);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
 
-  /* 이름표와 말풍선 */
+  /* 이름표 · 말풍선 */
   #labels{position:fixed;inset:0;pointer-events:none;overflow:hidden}
-  .tag{position:absolute;left:0;top:0;transform:translate(-50%,-100%);display:flex;flex-direction:column;align-items:center;gap:4px;will-change:transform}
-  .tag .name{font-size:12px;padding:2px 7px;border-radius:999px;background:rgba(10,10,14,.45);color:rgba(245,232,210,.9);white-space:nowrap;pointer-events:auto;cursor:pointer;text-shadow:0 1px 3px #000}
-  .tag.me .name{color:#ffd9a8;cursor:default}
-  .tag .bubble{max-width:200px;font-size:14px;line-height:1.4;padding:7px 11px;border-radius:14px;background:rgba(250,244,232,.95);color:#2a2018;box-shadow:0 4px 14px rgba(0,0,0,.35);word-break:break-word;opacity:0;transform:translateY(4px);transition:opacity .25s,transform .25s;position:relative}
+  .tag{position:absolute;left:0;top:0;display:flex;flex-direction:column;align-items:center;gap:5px;will-change:transform}
+  .tag .name{display:flex;align-items:center;gap:6px;font-size:13px;padding:4px 11px 4px 5px;border-radius:999px;background:rgba(14,16,28,.72);color:#f2f0ea;white-space:nowrap;pointer-events:auto;cursor:pointer}
+  .tag .name:before{content:"";width:6px}
+  .tag.me .name{cursor:default}
+  .tag.me .name:before{content:"나";width:auto;font-size:11px;background:var(--me);color:#fff;border-radius:999px;padding:2px 8px}
+  .tag .bubble{max-width:210px;font-size:14px;line-height:1.45;padding:8px 12px;border-radius:16px;background:rgba(250,246,238,.96);color:#231c16;box-shadow:0 6px 18px rgba(0,0,0,.35);word-break:break-word;opacity:0;transform:translateY(4px);transition:opacity .25s,transform .25s;position:relative}
   .tag .bubble.show{opacity:1;transform:none}
-  .tag .bubble:after{content:"";position:absolute;left:50%;bottom:-6px;margin-left:-6px;border:6px solid transparent;border-top-color:rgba(250,244,232,.95);border-bottom:0}
-  .tag .bubble.emo{background:transparent;box-shadow:none;font-size:26px;padding:0}
+  .tag .bubble:after{content:"";position:absolute;left:50%;bottom:-6px;margin-left:-6px;border:6px solid transparent;border-top-color:rgba(250,246,238,.96);border-bottom:0}
+  .tag .bubble.emo{background:transparent;box-shadow:none;font-size:28px;padding:0}
   .tag .bubble.emo:after{display:none}
-  .tag .sub{font-size:10px;color:rgba(200,185,160,.6);text-shadow:0 1px 3px #000}
 
-  /* 상단 정보 */
-  .hud{position:fixed;top:14px;left:16px;pointer-events:none;text-shadow:0 1px 6px #000}
-  .hud .zone{font-size:22px;letter-spacing:.04em}
-  .hud .line{font-size:13px;color:var(--dim);margin-top:3px}
-  .hud .line b{color:var(--ink);font-weight:400}
-  .top-right{position:fixed;top:12px;right:12px;display:flex;gap:6px;align-items:center}
-  .pill{font-size:13px;border-radius:999px;padding:7px 12px;cursor:pointer;text-decoration:none;color:var(--ink);display:inline-flex;align-items:center;gap:4px;white-space:nowrap}
-  .pill:hover{background:rgba(255,154,61,.2)}
-  .pill.on{background:rgba(255,154,61,.25);border-color:rgba(255,154,61,.45)}
+  /* 상단 바 */
+  .topbar{position:fixed;top:calc(12px + var(--st));left:12px;right:12px;display:flex;gap:8px;align-items:center;pointer-events:none}
+  .topbar .sp{flex:1}
+  .chip{pointer-events:auto;height:46px;min-width:46px;border-radius:999px;display:inline-flex;align-items:center;justify-content:center;gap:7px;padding:0 15px;font-size:15px;cursor:pointer;color:var(--ink);text-decoration:none;white-space:nowrap}
+  .chip svg{width:21px;height:21px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  .chip.round{padding:0;width:46px}
+  .chip:active{transform:scale(.96)}
+  .chip.zone{cursor:default}
+  .sub{position:fixed;top:calc(64px + var(--st));left:16px;font-size:12px;color:var(--dim);text-shadow:0 1px 4px #000;pointer-events:none}
 
-  /* 하단: 행동 버튼 + 채팅 */
-  .bottom{position:fixed;left:50%;bottom:14px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:8px;width:min(560px,calc(100vw - 20px))}
-  .actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:center}
-  .act{border-radius:14px;padding:8px 12px;cursor:pointer;display:flex;align-items:center;gap:6px;font-size:13px;user-select:none;-webkit-user-select:none;touch-action:none;transition:transform .1s,background .15s}
-  .act .i{font-size:18px}
-  .act:hover{background:rgba(255,170,90,.16)}
-  .act:active{transform:scale(.96)}
-  .act.on{background:rgba(255,154,61,.28);border-color:rgba(255,154,61,.5)}
-  .act.hot{animation:hot .5s ease-in-out infinite alternate;background:rgba(255,200,90,.35)}
-  @keyframes hot{to{box-shadow:0 0 18px rgba(255,200,90,.7)}}
-  .act[disabled]{opacity:.45;pointer-events:none}
-  .chatbar{display:flex;gap:6px;width:100%;border-radius:16px;padding:5px}
-  .chatbar input{flex:1;min-width:0;font:inherit;font-size:15px;color:var(--ink);background:transparent;border:0;outline:none;padding:8px 10px}
-  .chatbar input::placeholder{color:rgba(200,185,160,.55)}
-  .chatbar .send{border:0;background:rgba(255,154,61,.25);border-radius:12px;padding:0 14px;cursor:pointer}
-  .chatbar .icon{border:0;background:transparent;cursor:pointer;font-size:18px;padding:0 6px}
-  .emotes{display:none;gap:4px;padding:6px;border-radius:14px}
-  .emotes.show{display:flex;flex-wrap:wrap;justify-content:center}
-  .emotes button{border:0;background:rgba(255,255,255,.05);border-radius:10px;padding:6px 9px;cursor:pointer;font-size:12px;display:flex;flex-direction:column;align-items:center}
-  .emotes button span{font-size:20px}
-  .emotes button:hover{background:rgba(255,170,90,.18)}
+  /* 하단: 행동 바 + 채팅 */
+  .bottom{position:fixed;left:50%;bottom:calc(12px + var(--sb));transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:8px;width:min(640px,calc(100vw - 20px))}
+  .actbar{display:flex;gap:2px;padding:8px 6px;border-radius:26px;max-width:100%;overflow-x:auto;scrollbar-width:none}
+  .actbar::-webkit-scrollbar{display:none}
+  .act{flex:0 0 auto;min-width:62px;border:0;background:transparent;border-radius:16px;padding:6px 8px;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12.5px;color:#dfe3f0;touch-action:none;transition:background .15s,transform .1s}
+  .act .i{font-size:23px;line-height:1;filter:saturate(.9)}
+  .act:hover{background:rgba(255,255,255,.06)}
+  .act:active{transform:scale(.95)}
+  .act.on{background:rgba(255,154,74,.22);color:#fff}
+  .act.hot{animation:hot .55s ease-in-out infinite alternate;background:rgba(255,200,90,.3)}
+  @keyframes hot{to{box-shadow:0 0 18px rgba(255,200,90,.6)}}
+  .chatbar{display:flex;gap:6px;width:100%;border-radius:22px;padding:5px}
+  .chatbar input{flex:1;min-width:0;font:inherit;font-size:15px;color:var(--ink);background:transparent;border:0;outline:none;padding:8px 10px;-webkit-user-select:text;user-select:text}
+  .chatbar input::placeholder{color:rgba(170,180,210,.55)}
+  .chatbar .send{border:0;background:rgba(255,154,74,.28);border-radius:16px;padding:0 15px;cursor:pointer}
+  .chatbar .icon{border:0;background:transparent;cursor:pointer;font-size:19px;padding:0 6px}
+  .emotes{display:none;gap:4px;padding:6px;border-radius:18px;flex-wrap:wrap;justify-content:center}
+  .emotes.show{display:flex}
+  .emotes button{border:0;background:rgba(255,255,255,.05);border-radius:12px;padding:6px 9px;cursor:pointer;font-size:12px;display:flex;flex-direction:column;align-items:center}
+  .emotes button span{font-size:21px}
 
-  /* 대화 기록 */
-  #log{position:fixed;left:14px;bottom:130px;width:min(300px,40vw);display:flex;flex-direction:column;gap:3px;pointer-events:none;font-size:13px}
-  #log div{background:rgba(10,10,14,.5);padding:4px 9px;border-radius:10px;width:fit-content;max-width:100%;text-shadow:0 1px 2px #000;transition:opacity 1s;word-break:break-word}
-  #log div b{font-weight:400;color:#ffd9a8;margin-right:6px}
+  #log{position:fixed;left:14px;bottom:calc(170px + var(--sb));width:min(300px,42vw);display:flex;flex-direction:column;gap:3px;pointer-events:none;font-size:13px}
+  #log div{background:rgba(10,12,22,.55);padding:4px 10px;border-radius:12px;width:fit-content;max-width:100%;transition:opacity 1s;word-break:break-word}
+  #log div b{font-weight:400;color:#ffc89a;margin-right:6px}
   #log div.sys{color:var(--dim)}
+  #mini{position:fixed;right:14px;bottom:calc(170px + var(--sb));width:120px;height:120px;border-radius:50%;cursor:pointer;box-shadow:0 4px 18px rgba(0,0,0,.45)}
 
-  /* 미니맵 */
-  #mini{position:fixed;right:14px;bottom:16px;width:140px;height:140px;border-radius:50%;cursor:pointer;box-shadow:0 4px 18px rgba(0,0,0,.45)}
-
-  .toast{position:fixed;left:50%;top:18%;transform:translate(-50%,-8px);padding:10px 16px;border-radius:12px;font-size:15px;opacity:0;transition:opacity .3s,transform .3s;pointer-events:none;white-space:nowrap;z-index:5}
+  .toast{position:fixed;left:50%;top:calc(90px + var(--st));transform:translate(-50%,-8px);padding:10px 16px;border-radius:14px;font-size:14.5px;opacity:0;transition:opacity .3s,transform .3s;pointer-events:none;white-space:nowrap;z-index:5;max-width:92vw;overflow:hidden;text-overflow:ellipsis}
   .toast.show{opacity:1;transform:translate(-50%,0)}
-
-  .menu{position:fixed;display:none;flex-direction:column;border-radius:12px;padding:4px;z-index:6;min-width:120px}
+  .menu{position:fixed;display:none;flex-direction:column;border-radius:14px;padding:5px;z-index:6;min-width:140px}
   .menu.show{display:flex}
-  .menu button{border:0;background:transparent;text-align:left;padding:8px 10px;border-radius:8px;cursor:pointer;font-size:14px}
-  .menu button:hover{background:rgba(255,170,90,.18)}
-  .menu .who{font-size:12px;color:var(--dim);padding:4px 10px 2px}
+  .menu button{border:0;background:transparent;text-align:left;padding:9px 11px;border-radius:9px;cursor:pointer;font-size:14px}
+  .menu button:hover{background:rgba(255,255,255,.07)}
+  .menu .who{font-size:12px;color:var(--dim);padding:5px 11px 2px;max-width:240px;white-space:normal;word-break:break-word;line-height:1.5}
+  .menu .who b{color:var(--ink);font-weight:400}
 
-  .overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(5,6,10,.55);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);z-index:10}
+  .overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(5,7,14,.5);backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);z-index:10;padding:16px}
   .overlay.hide{display:none}
-  .card{width:min(380px,92vw);background:rgba(22,19,22,.94);border:1px solid var(--line);border-radius:20px;padding:26px 24px;text-align:center}
-  .card h2{margin:0 0 6px;font-weight:400;font-size:26px;letter-spacing:.04em}
-  .card p{margin:0 0 16px;color:var(--dim);font-size:14px;line-height:1.65}
-  .card input{width:100%;font:inherit;font-size:16px;padding:11px 14px;border-radius:12px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:var(--ink);text-align:center;outline:none}
-  .card input:focus{border-color:rgba(255,154,61,.5)}
-  .swatches{display:flex;justify-content:center;gap:10px;margin:16px 0 18px;flex-wrap:wrap}
-  .swatches button{width:28px;height:28px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0}
-  .swatches button.sel{border-color:var(--ink);transform:scale(1.12)}
-  .primary{font-size:16px;width:100%;padding:12px;border-radius:12px;border:0;background:linear-gradient(180deg,#ffb35c,#f0782e);color:#2a1406;cursor:pointer}
-  .ghost{font-size:15px;padding:11px;border-radius:12px;border:1px solid rgba(255,255,255,.14);background:transparent;cursor:pointer}
-  .row{display:flex;gap:8px}
-  .row>*{flex:1}
+  .card{width:min(390px,100%);background:rgba(16,20,38,.95);border:1px solid var(--line);border-radius:24px;padding:24px 22px;text-align:center;max-height:92vh;overflow:auto}
+  .card h2{margin:0 0 6px;font-weight:400;font-size:25px}
+  .card p{margin:0 0 14px;color:var(--dim);font-size:14px;line-height:1.65}
+  .card input{width:100%;font:inherit;font-size:16px;padding:12px 14px;border-radius:14px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:var(--ink);text-align:center;outline:none;-webkit-user-select:text;user-select:text}
+  .card input:focus{border-color:rgba(255,154,74,.55)}
+  .label{font-size:12px;color:var(--dim);margin:14px 0 8px;text-align:left}
+  .picks{display:flex;justify-content:center;gap:8px;flex-wrap:wrap}
+  .picks button{border:2px solid transparent;background:rgba(255,255,255,.06);border-radius:14px;padding:6px 8px;cursor:pointer;font-size:12px;display:flex;flex-direction:column;align-items:center;gap:2px;min-width:52px}
+  .picks button span{font-size:26px}
+  .picks button.sel{border-color:var(--accent);background:rgba(255,154,74,.14)}
+  .swatches{display:flex;justify-content:center;gap:9px;flex-wrap:wrap}
+  .swatches button{width:30px;height:30px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0}
+  .swatches button.sel{border-color:#fff;transform:scale(1.12)}
+  .primary{font-size:16px;width:100%;padding:13px;border-radius:14px;border:0;background:linear-gradient(180deg,#ffb067,#f0782e);color:#2a1406;cursor:pointer;margin-top:18px}
+  .ghost{font-size:15px;padding:12px;border-radius:14px;border:1px solid rgba(255,255,255,.14);background:transparent;cursor:pointer}
+  .row{display:flex;gap:8px;margin-top:16px}
+  .row>*{flex:1;margin-top:0}
   .keys{font-size:12px;color:var(--dim);margin-top:14px;line-height:1.7}
-  #tentView{position:fixed;inset:0;display:none;align-items:flex-end;justify-content:center;padding-bottom:150px;pointer-events:none;background:radial-gradient(ellipse at center,rgba(255,170,90,.12),rgba(8,6,6,.75) 70%)}
+  .setrow{display:flex;justify-content:space-between;align-items:center;padding:12px 4px;border-bottom:1px solid var(--line);font-size:15px;text-align:left}
+  .toggle{width:50px;height:28px;border-radius:999px;background:rgba(255,255,255,.15);border:0;position:relative;cursor:pointer;flex:0 0 auto}
+  .toggle:after{content:"";position:absolute;top:3px;left:3px;width:22px;height:22px;border-radius:50%;background:#fff;transition:left .2s}
+  .toggle.on{background:var(--accent)}
+  .toggle.on:after{left:25px}
+  #tentView{position:fixed;inset:0;display:none;align-items:flex-end;justify-content:center;padding-bottom:180px;pointer-events:none;background:radial-gradient(ellipse at center,rgba(255,170,90,.12),rgba(8,6,6,.75) 70%)}
   #tentView.show{display:flex}
   #tentView .card{pointer-events:auto;width:auto;padding:16px 20px}
-  #loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:var(--dim);font-size:14px;z-index:20;background:#0b0f1a}
+  #placeHint{position:fixed;left:50%;top:calc(130px + var(--st));transform:translateX(-50%);display:none;padding:10px 14px;border-radius:14px;font-size:14px;gap:10px;align-items:center;z-index:4}
+  #placeHint.show{display:flex}
+  #placeHint button{border:0;background:rgba(255,255,255,.1);border-radius:10px;padding:5px 10px;cursor:pointer}
+  #loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:var(--dim);font-size:14px;z-index:20;background:#0b111f}
   #loading.hide{display:none}
+  body.bulmung .topbar,body.bulmung .sub,body.bulmung #mini,body.bulmung #log{opacity:0;transition:opacity .6s}
 
   @media (max-width:640px){
-    .hud .zone{font-size:18px}
-    .top-right .label{display:none}
-    #mini{width:96px;height:96px;bottom:auto;top:58px;right:10px}
-    #log{bottom:auto;top:96px;left:12px;width:62vw;font-size:12px}
-    .act{padding:7px 10px;font-size:12px}
+    .chip{height:42px;min-width:42px;font-size:14px;padding:0 13px}
+    .chip.round{width:42px}
+    .chip .label{display:none}
+    #mini{width:88px;height:88px;bottom:auto;top:calc(64px + var(--st));right:12px}
+    #log{bottom:auto;top:calc(86px + var(--st));left:12px;width:60vw;font-size:12px}
+    .act{min-width:56px;font-size:11.5px;padding:5px 6px}
+    .act .i{font-size:21px}
   }
 </style>
 </head>
 <body>
 <div id="loading">캠핑장으로 가는 중…</div>
 <canvas id="scene" tabindex="0"></canvas>
+<div id="vignette"></div>
 <div id="labels"></div>
 
-<div class="hud">
-  <div class="zone" id="zone">모닥불 캠핑장</div>
-  <div class="line" id="countLine">불을 지피는 중…</div>
-  <div class="line" id="weatherLine"></div>
+<div class="topbar">
+  <div class="chip glass zone" id="zone">모닥불 캠핑장</div>
+  <div class="sp"></div>
+  <div class="chip glass" id="countChip" title="지금 캠핑장에 있는 사람">
+    <svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.3-6 6.5-6s5.9 2.4 6.5 6"/><circle cx="17" cy="8.5" r="2.8"/><path d="M16.5 14c2.8.2 4.6 2.4 5 5.5"/></svg>
+    <span id="countNum">1</span>
+  </div>
+  <button class="chip glass round" id="inviteBtn" title="친구 부르기"><svg viewBox="0 0 24 24"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c.6-3.6 3.3-6 6.5-6s5.9 2.4 6.5 6"/><path d="M19 8v6M16 11h6"/></svg></button>
+  <a class="chip glass round" id="donateBtn" href="#" target="_blank" rel="noopener" title="후원하기" style="display:none"><svg viewBox="0 0 24 24"><path d="M4 9h13v5a5 5 0 0 1-5 5H9a5 5 0 0 1-5-5z"/><path d="M17 10h1.5a2.5 2.5 0 0 1 0 5H17"/><path d="M8 3c0 1.5 1 1.5 1 3M12 3c0 1.5 1 1.5 1 3"/></svg></a>
+  <button class="chip glass round" id="settingsBtn" title="설정"><svg viewBox="0 0 24 24"><path d="M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M20 18h0"/><circle cx="16" cy="6" r="2"/><circle cx="10" cy="12" r="2"/><circle cx="18" cy="18" r="2"/></svg></button>
 </div>
-
-<div class="top-right">
-  <button class="pill panel" id="inviteBtn">🔗 <span class="label">친구 부르기</span></button>
-  <a class="pill panel" id="donateBtn" href="#" target="_blank" rel="noopener" style="display:none">☕ <span class="label">후원하기</span></a>
-  <button class="pill panel" id="soundBtn">🔈</button>
-</div>
+<div class="sub" id="subLine"></div>
 
 <div id="log"></div>
-<canvas id="mini" width="280" height="280"></canvas>
+<canvas id="mini" width="240" height="240"></canvas>
 
 <div class="bottom">
-  <div class="emotes panel" id="emotes">
+  <div class="emotes glass" id="emotes">
     <button data-e="wave"><span>👋</span>인사</button>
     <button data-e="nod"><span>🙂</span>끄덕</button>
     <button data-e="heart"><span>💛</span>하트</button>
@@ -145,32 +166,49 @@
     <button data-e="look"><span>🌌</span>하늘 보기</button>
     <button data-e="sleep"><span>💤</span>꾸벅</button>
   </div>
-  <div class="actions" id="actions"></div>
-  <form class="chatbar panel" id="chatForm" autocomplete="off">
+  <div class="actbar glass" id="actions"></div>
+  <form class="chatbar glass" id="chatForm" autocomplete="off">
     <button type="button" class="icon" id="emoteBtn" title="몸짓">🙂</button>
-    <input id="chatIn" maxlength="80" placeholder="가까이 있는 사람에게 말하기 (Enter)" enterkeyhint="send">
+    <input id="chatIn" maxlength="80" placeholder="가까이 있는 사람에게 말하기" enterkeyhint="send">
     <button class="send" type="submit">말하기</button>
   </form>
 </div>
 
-<div class="menu panel" id="peerMenu">
+<div class="menu glass" id="peerMenu">
   <div class="who" id="menuWho"></div>
   <button id="menuMute">🙈 이 사람 숨기기</button>
   <button id="menuReport">🚩 신고하기</button>
 </div>
+<div class="menu glass" id="ornMenu">
+  <div class="who" id="ornWho"></div>
+  <button id="ornReport">🚩 이 장식 신고하기</button>
+</div>
 
-<div id="tentView"><div class="card panel"><div style="margin-bottom:10px">⛺ 텐트 안에서 쉬는 중이에요</div><button class="ghost" id="tentExit" style="width:100%">밖으로 나가기</button></div></div>
-
-<div class="toast panel" id="toast"></div>
+<div id="tentView"><div class="card glass"><div style="margin-bottom:10px">⛺ 텐트 안에서 쉬는 중이에요</div><button class="ghost" id="tentExit" style="width:100%">밖으로 나가기</button></div></div>
+<div id="placeHint" class="glass"><span>🎄 트리에서 장식을 달 곳을 눌러요</span><button id="placeCancel">취소</button></div>
+<div class="toast glass" id="toast"></div>
 
 <div class="overlay" id="intro">
   <div class="card">
     <h2>🔥 모닥불 캠핑장</h2>
-    <p>같이 걷고, 불 앞에 앉고, 이야기해요.<br>호숫가에서 낚시하고, 언덕에서 별을 봐요.</p>
-    <input id="nickIn" maxlength="10" placeholder="이름 (비워두면 자동으로)">
+    <p>같이 걷고, 불 앞에 앉고, 이야기해요.<br>노천탕도 있고, 크리스마스 트리도 있어요.</p>
+    <input id="nickIn" maxlength="10" placeholder="오늘 밤 이름 (비워두면 자동)">
+    <div class="label">누구로 놀러 갈까요?</div>
+    <div class="picks" id="animals"></div>
+    <div class="label">목도리 색</div>
     <div class="swatches" id="swatches"></div>
     <button class="primary" id="enterBtn">캠핑장 들어가기</button>
-    <div class="keys">땅을 클릭(탭)하면 걸어가요 · 방향키/WASD도 돼요<br>마우스 휠·두 손가락으로 확대/축소</div>
+    <div class="keys">땅을 누르면 걸어가요 · 화면을 끌면 둘러봐요<br>방향키/WASD · 휠/두 손가락으로 확대</div>
+  </div>
+</div>
+
+<div class="overlay hide" id="settings">
+  <div class="card">
+    <h2>설정</h2>
+    <div class="setrow"><span>🔊 소리</span><button class="toggle" id="setSound"></button></div>
+    <div class="setrow"><span>✨ 빛 번짐 효과<br><small style="color:var(--dim)">느리면 꺼주세요</small></span><button class="toggle" id="setBloom"></button></div>
+    <div class="setrow"><span>🖼️ 고화질</span><button class="toggle" id="setHi"></button></div>
+    <button class="primary" id="settingsClose">닫기</button>
   </div>
 </div>
 
@@ -179,8 +217,21 @@
     <h2>🌠</h2>
     <p>별똥별에 빌 소원을 적어요.<br>나만 볼 수 있어요.</p>
     <input id="wishIn" maxlength="40" placeholder="소원 한 줄">
-    <div style="height:14px"></div>
     <div class="row"><button class="ghost" id="wishCancel">그만두기</button><button class="primary" id="wishOk">빌기</button></div>
+  </div>
+</div>
+
+<div class="overlay hide" id="ornModal">
+  <div class="card">
+    <h2>🎄 장식 달기</h2>
+    <p>트리에 장식을 달고 한 줄 남겨요.<br>모두가 볼 수 있어요.</p>
+    <div class="label">장식</div>
+    <div class="picks" id="ornKinds"></div>
+    <div class="label">색</div>
+    <div class="swatches" id="ornColors"></div>
+    <div class="label">한 줄 메시지 (선택)</div>
+    <input id="ornMsg" maxlength="40" placeholder="예) 모두 따뜻한 겨울 보내요">
+    <div class="row"><button class="ghost" id="ornCancel">그만두기</button><button class="primary" id="ornNext">트리에 달기</button></div>
   </div>
 </div>
 

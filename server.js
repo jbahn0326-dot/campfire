@@ -130,8 +130,35 @@ setInterval(() => { if (Date.now() >= weather.until) nextWeather(); }, 5000);
 
 function broadcast(obj, exceptId) { const s = frame(JSON.stringify(obj)); for (const [id, c] of clients) if (id !== exceptId && !c.conn.closed) { try { c.conn.socket.write(s); } catch {} } }
 
-const ACTS = new Set(['log', 'nod', 'warm', 'yawn', 'look', 'sleep', 'wish', 'fish', 'wave', 'heart', 'firework', 'cheers', 'eat', 'drink']);
-const TOOLS = new Set(['stick', 'rod', 'meat', 'cup', 'sparkler']);
+// ---------------- 크리스마스 트리 장식 (Supabase에 영구 저장, 없으면 메모리) ----------------
+const TREE = { x: -24, z: -22 };
+const ORN_KINDS = new Set(['ball', 'star', 'bell', 'cane', 'heart', 'gift']);
+const MAX_ORN = 3000;
+const SB_URL = (process.env.SUPABASE_URL || '').replace(/\/+$/, '');
+const SB_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_KEY || '';
+const useDb = /^https:\/\//.test(SB_URL) && !!SB_KEY;
+let ornaments = [];        // {id,kind,color,x,y,z,nick,msg}
+let memId = 1;
+const sbHeaders = () => ({ apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Content-Type': 'application/json' });
+async function loadOrnaments() {
+  if (!useDb) { console.log('ℹ️  SUPABASE_URL/SUPABASE_SERVICE_KEY가 없어서 트리 장식은 메모리에만 저장돼요'); return; }
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/ornaments?select=id,kind,color,x,y,z,nick,msg&order=id.desc&limit=${MAX_ORN}`, { headers: sbHeaders() });
+    if (!r.ok) throw new Error(r.status + ' ' + (await r.text()).slice(0, 200));
+    ornaments = (await r.json()).reverse();
+    console.log(`🎄 트리 장식 ${ornaments.length}개를 불러왔어요`);
+  } catch (e) { console.log('⚠️  트리 장식 불러오기 실패:', e.message); }
+}
+async function saveOrnament(o) {
+  if (!useDb) { o.id = memId++; return o; }
+  const r = await fetch(`${SB_URL}/rest/v1/ornaments`, { method: 'POST', headers: { ...sbHeaders(), Prefer: 'return=representation' }, body: JSON.stringify(o) });
+  if (!r.ok) throw new Error(r.status + ' ' + (await r.text()).slice(0, 200));
+  const [row] = await r.json(); return { ...o, id: row.id };
+}
+loadOrnaments();
+
+const ACTS = new Set(['log', 'nod', 'warm', 'yawn', 'look', 'sleep', 'wish', 'fish', 'wave', 'heart', 'firework', 'cheers', 'eat', 'drink', 'splash', 'relax', 'egg', 'milk']);
+const TOOLS = new Set(['stick', 'rod', 'meat', 'cup', 'sparkler', 'towel', 'milk']);
 const COLOR_RE = /^#[0-9a-fA-F]{6}$/;
 const U = c => String.fromCharCode(92) + 'u' + c.toString(16).padStart(4, '0');  // 정규식용 \\uXXXX 표기 만들기
 const INVISIBLE = new RegExp('[' + [[0x0, 0x1f], [0x7f, 0x9f], [0x200b, 0x200f], [0x2028, 0x202e], [0x2060, 0x206f], [0xfeff, 0xfeff]].map(([a, b]) => U(a) + '-' + U(b)).join('') + ']', 'g');
@@ -173,7 +200,7 @@ server.on('upgrade', (req, socket) => {
   const me = { conn, p: null, tokens: 30, last: Date.now(), lastLog: 0, lastChat: 0, ip: String(req.headers['x-forwarded-for'] || socket.remoteAddress || '').split(',')[0].trim() };
   clients.set(id, me);
 
-  conn.send({ type: 'welcome', id, now: Date.now(), fire: fireNow(), weather: { kind: weather.kind, until: weather.until },
+  conn.send({ type: 'welcome', id, now: Date.now(), fire: fireNow(), weather: { kind: weather.kind, until: weather.until }, ornaments,
     peers: [...clients].filter(([cid, c]) => cid !== id && c.p).map(([cid, c]) => ({ id: cid, p: c.p })) });
 
   conn.onmessage = raw => {
@@ -197,6 +224,7 @@ server.on('upgrade', (req, socket) => {
         tool: TOOLS.has(q.tool) ? q.tool : null,
         roast: num(q.roast, 0, 1.4),
         potato: q.potato === true,
+        ani: Number.isInteger(q.ani) && q.ani >= 0 && q.ani < 8 ? q.ani : 0,
         since: me.p ? me.p.since : Date.now()
       };
       if (p.roast !== null) p.roast = Math.round(p.roast * 100) / 100;
@@ -229,6 +257,23 @@ server.on('upgrade', (req, socket) => {
         if (c.conn.closed || !c.p) continue;
         if (cid === id || dist(c.p, me.p) <= CHAT_RANGE) { try { c.conn.socket.write(msg); } catch {} }
       }
+    } else if (m.type === 'ornament' && me.p) {
+      if (n - (me.lastOrn || 0) < 15000) { conn.send({ type: 'ornamentWait', ms: 15000 - (n - (me.lastOrn || 0)) }); return; }
+      const x = num(m.x, -60, 60), y = num(m.y, 0, 11), z = num(m.z, -60, 60);
+      if (x === null || y === null || z === null || !ORN_KINDS.has(m.kind)) return;
+      if (Math.hypot(x - TREE.x, z - TREE.z) > 4.6 || y < 0.6) return;          // 트리 근처만
+      if (dist(me.p, TREE) > 14) return;                                          // 트리 가까이 있는 사람만
+      const msg = cleanChat(typeof m.msg === 'string' ? m.msg.slice(0, 60) : '') || '';
+      me.lastOrn = n;
+      const o = { kind: m.kind, color: Number.isInteger(m.color) && m.color >= 0 && m.color <= 0xffffff ? m.color : 0xd94040,
+        x: Math.round(x * 100) / 100, y: Math.round(y * 100) / 100, z: Math.round(z * 100) / 100, nick: me.p.nick, msg: Array.from(msg).slice(0, 40).join('') };
+      saveOrnament(o).then(saved => {
+        ornaments.push(saved); if (ornaments.length > MAX_ORN) ornaments.shift();
+        broadcast({ type: 'ornament', o: saved });
+      }).catch(e => { console.log('⚠️  장식 저장 실패:', e.message); conn.send({ type: 'ornamentFail' }); });
+    } else if (m.type === 'reportOrnament' && Number.isInteger(m.oid)) {
+      const o = ornaments.find(x => x.id === m.oid);
+      if (o) console.log(`[장식 신고] ${new Date().toISOString()} 신고자=${me.p ? me.p.nick : '?'} 장식id=${o.id} 작성자=${o.nick} 메시지=${JSON.stringify(o.msg)}`);
     } else if (m.type === 'report' && typeof m.id === 'string' && clients.has(m.id)) {
       const t = clients.get(m.id);
       console.log(`[신고] ${new Date().toISOString()} 신고자=${me.p ? me.p.nick : '?'} 대상=${t.p ? t.p.nick : '?'}(${m.id}) ip=${t.ip}`);
