@@ -1,0 +1,9 @@
+{
+  "name": "campfire",
+  "version": "1.0.0",
+  "description": "모닥불 — 말없이 같이 불을 보는 온라인 캠핑장",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "engines": { "node": ">=18" },
+  "license": "MIT"
+}
