@@ -168,6 +168,14 @@ button{font:inherit;color:inherit;cursor:pointer}
 .ch.close{padding:6px;text-align:center;font-size:13px;color:#aab3cc;background:transparent}
 .toast{top:calc(64px + var(--st));font-size:13.5px;padding:8px 13px;max-width:80vw}
 .tag .name{font-size:12px;padding:3px 8px 3px 4px}
+.cal{display:none;gap:3px;margin-top:6px}.cal.show{display:flex}
+.cal i{flex:1;height:15px;border-radius:4px;background:rgba(255,255,255,.08);font-size:9.5px;text-align:center;line-height:15px;font-style:normal;color:#aab3cc}
+.cal i.ok{background:#2f7f4f;color:#fff}.cal i.no{background:#8f3f3f;color:#fff}.cal i.today{outline:1.5px solid #ffd23a}
+#night{white-space:pre-line;line-height:1.6}
+.eps{display:flex;flex-direction:column;gap:8px;margin:6px 0 4px}
+.pick.ep{display:flex;gap:12px;align-items:center;text-align:left;padding:11px 12px}
+.pick.ep .i{font-size:32px}.pick.ep b{margin:0;font-weight:900}.pick.ep small{margin-top:2px}
+.pick.ep:disabled{opacity:.45}
 .tag .name i{font-size:10.5px;padding:1px 6px}
 .tag .name .bar{width:44px;height:6px}
 .tag .name em{font-size:12.5px}
@@ -185,10 +193,11 @@ button{font:inherit;color:inherit;cursor:pointer}
 <div class="card0 pn">
   <div class="t1"><b id="dayTxt">1일차 / 7</b><div class="ap" id="apBox"></div><button class="live" id="liveBtn"><i></i><span id="liveTxt">…</span></button></div>
   <div class="sub">
-    <div class="stat"><label>의욕 <b id="motV">0</b></label><div class="track"><div class="fill" id="mot" style="background:#5fd38d"></div></div></div>
-    <div class="stat"><label>반발 <b id="resV">0</b></label><div class="track"><div class="fill" id="res" style="background:#ef6a5a"></div></div></div>
-    <div class="stat"><label>개조 <b id="habV">0%</b></label><div class="track"><div class="fill" id="hab" style="background:linear-gradient(90deg,#f0b057,#ff7a9a)"></div></div></div>
+    <div class="stat"><label><span id="l1">의욕</span> <b id="motV">0</b></label><div class="track"><div class="fill" id="mot" style="background:#5fd38d"></div></div></div>
+    <div class="stat"><label><span id="l2">반발</span> <b id="resV">0</b></label><div class="track"><div class="fill" id="res" style="background:#ef6a5a"></div></div></div>
+    <div class="stat"><label><span id="l3">개조</span> <b id="habV">0%</b></label><div class="track"><div class="fill" id="hab" style="background:linear-gradient(90deg,#f0b057,#ff7a9a)"></div></div></div>
   </div>
+  <div class="cal" id="calRow"></div>
   <div class="who" id="whoTxt"></div>
 </div>
 
