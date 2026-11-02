@@ -25,7 +25,8 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache' });
     return res.end(JSON.stringify({ donateUrl: /^https:\/\//.test(process.env.DONATE_URL || '') ? process.env.DONATE_URL : '' }));
   }
-  if (u === '/') u = '/index.html';
+  if (u === '/house') { res.writeHead(301, { Location: '/house/' }); return res.end(); }
+  if (u.endsWith('/')) u += 'index.html';
   const file = path.normalize(path.join(PUB, u));
   if (!file.startsWith(PUB + path.sep)) { res.writeHead(403); return res.end(); }
   fs.readFile(file, (err, data) => {
