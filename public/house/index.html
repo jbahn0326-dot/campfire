@@ -132,6 +132,49 @@ button{font:inherit;color:inherit;cursor:pointer}
 #loading{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;color:var(--dim);font-size:14px;z-index:20;background:#0b0d14}
 @media (max-width:380px){.lb{width:58px;height:56px;font-size:11.5px}.bpanel{left:84px;right:80px}.rb{width:62px}}
 </style>
+<style>
+/* ---- 작게 접은 화면 (게임 화면을 넓게) ---- */
+.card0{right:auto;width:min(62vw,280px);padding:7px 10px 8px;border-radius:13px}
+.card0 .t1{justify-content:flex-start;gap:8px}
+.card0 .t1 b{font-size:13.5px;font-weight:900;white-space:nowrap}
+.card0 .ap{font-size:11px;gap:2px}.card0 .ap span{flex:0 0 7px;width:7px;height:7px}
+.card0 .sub{margin-top:6px;padding:0;background:none;gap:8px}
+.stat label{font-size:11px}.stat label b{font-size:11.5px}
+.track{height:4px;margin-top:3px}
+.card0 .who{display:none}
+.live{margin:0 0 0 auto;padding:2px 7px 2px 6px;font-size:11px;gap:4px;font-weight:700}
+.live i{width:6px;height:6px}
+.rcol{gap:6px}
+.ib{width:42px;height:42px;border-radius:12px}
+.ib svg{width:20px;height:20px}
+.menu{position:fixed;top:calc(58px + var(--st));right:10px;border-radius:14px;padding:6px;display:none;flex-direction:column;z-index:7;min-width:170px}
+.menu.show{display:flex}
+.menu button{border:0;background:transparent;text-align:left;padding:10px 12px;border-radius:9px;font-size:14px;font-weight:700;display:flex;gap:8px;align-items:center}
+.menu button:active{background:rgba(255,255,255,.08)}
+.menu svg{width:18px;height:18px;stroke:currentColor;fill:none;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.abar{position:fixed;left:8px;right:8px;bottom:calc(8px + var(--sb));border-radius:16px;padding:5px;display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;max-width:640px;margin:0 auto}
+.abar::-webkit-scrollbar{display:none}
+.lb{flex:1 0 42px;width:auto;height:50px;border-radius:11px;font-size:11px;gap:2px;padding:0 2px;white-space:nowrap}
+.lb .i{font-size:19px}
+.lb.main{flex:1.4 0 60px;background:linear-gradient(180deg,#f0b057,#d9822e);color:#2a1406}
+.lb.main:disabled{background:var(--panel2);color:#9aa3bd}
+.bpanel{left:8px;right:8px;bottom:calc(70px + var(--sb));max-width:520px;margin:0 auto;max-height:42vh;padding:6px;gap:5px;border-radius:14px;display:none}
+.bpanel.show{display:flex}
+.bpanel .q{font-size:13px;padding:2px 4px 0;display:flex;justify-content:space-between;gap:8px;align-items:flex-start}
+.bpanel .q small{font-size:11.5px}
+.ch{padding:8px 10px;font-size:14px;border-radius:10px;text-align:left}
+.ch small{font-size:11.5px;margin-top:1px}
+.ch .pb{height:4px;margin-top:4px}
+.ch.close{padding:6px;text-align:center;font-size:13px;color:#aab3cc;background:transparent}
+.toast{top:calc(64px + var(--st));font-size:13.5px;padding:8px 13px;max-width:80vw}
+.tag .name{font-size:12px;padding:3px 8px 3px 4px}
+.tag .name i{font-size:10.5px;padding:1px 6px}
+.tag .name .bar{width:44px;height:6px}
+.tag .name em{font-size:12.5px}
+.tag .state{font-size:12.5px;padding:3px 9px}
+.tag .bubble{font-size:13.5px;max-width:190px;padding:6px 10px}
+.float{font-size:16px}
+</style>
 </head>
 <body>
 <div id="loading">집에 들어가는 중…</div>
@@ -140,28 +183,31 @@ button{font:inherit;color:inherit;cursor:pointer}
 <div id="labels"></div>
 
 <div class="card0 pn">
-  <div class="t1"><div class="logo">🛋️ 남편 개조 <small id="dayTxt">1일차 / 7</small></div><div class="ap" id="apBox"></div></div>
+  <div class="t1"><b id="dayTxt">1일차 / 7</b><div class="ap" id="apBox"></div><button class="live" id="liveBtn"><i></i><span id="liveTxt">…</span></button></div>
   <div class="sub">
     <div class="stat"><label>의욕 <b id="motV">0</b></label><div class="track"><div class="fill" id="mot" style="background:#5fd38d"></div></div></div>
-    <div class="stat"><label>반발심 <b id="resV">0</b></label><div class="track"><div class="fill" id="res" style="background:#ef6a5a"></div></div></div>
-    <div class="stat"><label>개조율 <b id="habV">0%</b></label><div class="track"><div class="fill" id="hab" style="background:linear-gradient(90deg,#f0b057,#ff7a9a)"></div></div></div>
+    <div class="stat"><label>반발 <b id="resV">0</b></label><div class="track"><div class="fill" id="res" style="background:#ef6a5a"></div></div></div>
+    <div class="stat"><label>개조 <b id="habV">0%</b></label><div class="track"><div class="fill" id="hab" style="background:linear-gradient(90deg,#f0b057,#ff7a9a)"></div></div></div>
   </div>
   <div class="who" id="whoTxt"></div>
-  <button class="live" id="liveBtn"><i></i><span id="liveTxt">접속자 확인 중…</span></button>
 </div>
 
 <div class="rcol">
-  <button class="ib pn" id="shareBtn" title="공유"><svg viewBox="0 0 24 24"><path d="M12 15V3M7 8l5-5 5 5"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-7"/></svg></button>
-  <button class="ib pn" id="helpBtn" title="도움말"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.5 9.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .9-1 1.6V14M12 17.2v.1"/></svg></button>
-  <button class="ib pn" id="soundBtn" title="소리"><svg viewBox="0 0 24 24" id="soundIco"></svg></button>
-  <button class="ib pn" id="decorBtn" title="꾸미기"><svg viewBox="0 0 24 24"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>
-  <button class="ib pn" id="viewBtn" title="시점"><svg viewBox="0 0 24 24"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></button>
+  <button class="ib pn" id="menuBtn" title="메뉴"><svg viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
   <button class="ib pn" id="endBtn" title="하루 마치기"><svg viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg></button>
 </div>
+<div class="menu pn" id="menu">
+  <button id="helpBtn">❓ 하는 법</button>
+  <button id="bookBtn">📖 엔딩 도감</button>
+  <button id="decorBtn">🎨 꾸미기</button>
+  <button id="shareBtn">📤 결과 공유</button>
+  <button id="viewBtn">👁️ 집 전체 보기</button>
+  <button id="soundBtn"><svg viewBox="0 0 24 24" id="soundIco"></svg><span>소리 켜기/끄기</span></button>
+  <button id="statsBtn">👥 접속자 현황</button>
+</div>
 
-<div class="lcol pn" id="lcol"></div>
 <div class="bpanel pn" id="bpanel"></div>
-<button class="rb pn" id="bookBtn"><span class="i">📖</span>엔딩 도감</button>
+<div class="abar pn" id="lcol"></div>
 
 <div class="toast pn" id="toast"></div>
 <div id="night"></div>

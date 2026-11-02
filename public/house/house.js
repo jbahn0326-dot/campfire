@@ -1085,9 +1085,9 @@ function hLie() { if (H.pose === 'lie') { standUp(); renderControls(); return; }
 function lbtn(i, t, f, o = {}) { return { i, t, f, ...o }; }
 let panelOpen = false, panelSticky = false;
 function openPanel(html, choices, sticky) {
-  panelOpen = true; panelSticky = !!sticky; const el = $('bpanel'); el.innerHTML = html || '';
+  panelOpen = true; panelSticky = !!sticky; const el = $('bpanel'); el.innerHTML = html || ''; el.classList.add('show'); el.scrollTop = 0; $('menu').classList.remove('show');
   choices.forEach(c => { const b = document.createElement('button'); b.className = 'ch' + (c.cls ? ' ' + c.cls : ''); b.innerHTML = c.t + (c.s ? `<small>${c.s}</small>` : '') + (c.pb != null ? `<div class="pb"><b style="width:${c.pb}%"></b></div>` : ''); b.disabled = !!c.dis; b.onclick = () => { sfx('tap', true); c.f(); }; el.appendChild(b); });
-  if (!sticky) { const b = document.createElement('button'); b.className = 'ch'; b.textContent = '닫기'; b.style.padding = '8px'; b.onclick = closePanel; el.appendChild(b); }
+  if (!sticky) { const b = document.createElement('button'); b.className = 'ch close'; b.textContent = '닫기 ✕'; b.onclick = closePanel; el.appendChild(b); }
 }
 function closePanel() { panelOpen = false; panelSticky = false; renderControls(); }
 function openChores() {
@@ -1099,45 +1099,30 @@ function openChores() {
 }
 function renderControls() {
   const lc = $('lcol'), bp = $('bpanel');
-  let L = [];
-  if (ROLE === 'husband') {
-    L = [lbtn('💛', '하트', () => { net({ k: 'emo', e: 'heart' }); pose(H, 'heart', 1500); const p = H.headG.getWorldPosition(_v); burst(p.x, p.y + 0.3, p.z, 10, 0xff6a9a, 0.8, 0.25, true); sfx('heart', true); }),
-      lbtn('🎁', '몰래 선물', () => hGift('gift'), { dis: !S || (S.gifted && S.gifted.gift), hot: S && !(S.gifted && S.gifted.gift) }),
-      lbtn('☕', '커피 타기', () => hGift('coffee'), { dis: !S || (S.gifted && S.gifted.coffee) }),
-      lbtn(H.pose === 'lie' ? '🧍' : '🛋️', H.pose === 'lie' ? '일어나기' : '눕기', hLie)];
-  } else if (drunkOn()) {
-    L = Object.entries(DRUNK_ACTS).map(([k, a]) => lbtn(a.icon, a.name, () => a.run(), { dis: S.over || (k !== 'photo' && S.ap <= 0) || (k === 'photo' && S.photo) || (k === 'socks' && !S.socks) }));
-  } else {
-    L = Object.entries(TACTICS).map(([k, t]) => lbtn(t.icon, t.name, () => useTactic(k), { dis: !S || S.over || S.ap <= 0 || S.slept }));
-  }
-  lc.innerHTML = ''; L.forEach(b => { const e = document.createElement('button'); e.className = 'lb' + (b.hot ? ' hot' : ''); e.innerHTML = `<span class="i">${b.i}</span>${b.t}`; e.disabled = !!b.dis; e.onclick = () => { sfx('tap', true); b.f(); }; lc.appendChild(e); });
-  if (panelOpen) return;
-  bp.innerHTML = '';
-  const add = (t, s, f, cls, dis) => { const b = document.createElement('button'); b.className = 'ch' + (cls ? ' ' + cls : ''); b.innerHTML = t + (s ? `<small>${s}</small>` : ''); b.disabled = !!dis; b.onclick = () => { sfx('tap', true); f(); }; return b; };
-  if (!S) return;
-  if (ROLE === 'husband') {
-    if (hJob) { const c = ALL[hJob.id]; const p = H.root.position; const at = Math.hypot(p.x - c.spot[0], p.z - c.spot[1]) < 0.8;
-      bp.appendChild(at ? add(`🧽 문지르기 ${hJob.n}/8`, `${c.name} 하는 중`, hScrub, 'go') : add(`🧽 ${c.name} 하러 가기`, '아내가 부탁한 일', hGoJob, 'go')); }
-    else bp.appendChild(add('🙋 스스로 집안일 하기', '아내 몰래 점수 따기 (보너스 +5%)', () => {
+  const B = [];   // 아래 줄 버튼: { i, t, f, dis, hot, main }
+  if (S && ROLE === 'husband') {
+    if (hJob) { const c = ALL[hJob.id], p = H.root.position, at = Math.hypot(p.x - c.spot[0], p.z - c.spot[1]) < 0.8;
+      B.push(at ? lbtn('🧽', `문지르기 ${hJob.n}/8`, hScrub, { main: true, hot: true }) : lbtn('🧽', `${c.name} 하러`, hGoJob, { main: true, hot: true })); }
+    else B.push(lbtn('🙋', '스스로 하기', () => {
       openPanel('<div class="q">🙋 뭘 해 볼까요? <small>아내가 엄청 놀랄 거예요</small></div>', todays().filter(c => !S.done[c.id]).map(c => ({ t: `${c.icon} ${c.name}`, s: `${c.room} · +${c.gain + 5}%`, dis: !!S.accepted || S.over, f: () => { net({ k: 'vol', c: c.id }); say(H, `${c.name} 내가 할게!`); closePanel(); } })));
-    }, '', S.over || !!S.accepted));
-    const r2 = document.createElement('div'); r2.className = 'row2';
-    r2.appendChild(add('💐 꽃', S.gifted && S.gifted.flower ? '오늘 끝' : '에너지 +1', () => hGift('flower'), '', S.over || (S.gifted && S.gifted.flower)));
-    r2.appendChild(add('💆 안마', S.gifted && S.gifted.massage ? '오늘 끝' : '에너지 +1', () => hGift('massage'), '', S.over || (S.gifted && S.gifted.massage)));
-    r2.appendChild(add('🥺 칭찬', '해 달라고', () => { net({ k: 'emo', e: 'praiseme' }); say(H, '나 칭찬해 줘…🥺'); }, '', S.over));
-    bp.appendChild(r2);
-    return;
+    }, { main: true, dis: S.over || !!S.accepted }));
+    const gd = k => !S || S.over || (S.gifted && S.gifted[k]);
+    B.push(lbtn('🎁', '선물', () => hGift('gift'), { dis: gd('gift'), hot: !gd('gift') }), lbtn('☕', '커피', () => hGift('coffee'), { dis: gd('coffee') }), lbtn('💐', '꽃', () => hGift('flower'), { dis: gd('flower') }), lbtn('💆', '안마', () => hGift('massage'), { dis: gd('massage') }),
+      lbtn('💛', '하트', () => { net({ k: 'emo', e: 'heart' }); pose(H, 'heart', 1500); const p = H.headG.getWorldPosition(_v); burst(p.x, p.y + 0.3, p.z, 10, 0xff6a9a, 0.8, 0.25, true); sfx('heart', true); }),
+      lbtn('🥺', '칭찬해줘', () => { net({ k: 'emo', e: 'praiseme' }); say(H, '나 칭찬해 줘…🥺'); }),
+      lbtn(H.pose === 'lie' ? '🧍' : '🛋️', H.pose === 'lie' ? '일어나기' : '눕기', hLie));
+  } else if (S && drunkOn()) {
+    B.push(lbtn('🛌', H.state === 'out' ? '귀가 중…' : `재우기 ${S.drunk}%`, putToBed, { main: true, hot: S.drunk <= 40 && H.state === 'drunk', dis: S.over || H.state !== 'drunk' }));
+    Object.entries(DRUNK_ACTS).forEach(([k, a]) => B.push(lbtn(a.icon, a.name.replace(' 스매싱', '').replace(' 벗기기', '').replace('증거 ', ''), () => a.run(), { dis: S.over || (k !== 'photo' && S.ap <= 0) || (k === 'photo' && S.photo) || (k === 'socks' && !S.socks) })));
+  } else if (S) {
+    const can = todays().some(c => !S.done[c.id] && S.mot >= reqOf(c));
+    B.push(lbtn('🧹', S.pending ? '대답 기다림' : S.accepted ? '하는 중…' : '시키기', openChores, { main: true, hot: can && !S.busy && !remoteH(), dis: S.over || S.busy }));
+    Object.entries(TACTICS).forEach(([k, t]) => B.push(lbtn(t.icon, t.name.replace(' 하자', ''), () => useTactic(k), { dis: S.over || S.ap <= 0 || S.slept })));
+    B.push(lbtn('🍗', '치킨', useChicken, { dis: S.over || S.ap <= 0 || S.used.chicken }), lbtn('🙈', '리모컨', useRemote, { dis: S.over || S.ap <= 0 || S.tvOff }));
   }
-  if (drunkOn()) {
-    bp.appendChild(add('🛌 소파에 재우기', H.state === 'out' ? '남편이 아직 안 들어왔어요…' : `취기 ${S.drunk}% · 40% 이하면 데려갈 수 있어요`, putToBed, S.drunk <= 40 && H.state === 'drunk' ? 'go hot' : 'go', S.over || H.state !== 'drunk'));
-    const tip = document.createElement('div'); tip.className = 'q'; tip.innerHTML = '<small>🍯 꿀물 -30 · 🖐️ 등짝 -25 (반발심↑) · 🧦 양말 -10 · 📸 내일 보너스</small>'; bp.appendChild(tip); return;
-  }
-  const can = todays().some(c => !S.done[c.id] && S.mot >= reqOf(c));
-  bp.appendChild(add('🧹 집안일 시키기', S.pending ? '남편 대답 기다리는 중…' : S.accepted ? `남편이 ${ALL[S.accepted].name} 하는 중` : '의욕이 차면 반짝여요', openChores, can && !S.busy && !remoteH() ? 'go hot' : 'go', S.over || S.busy));
-  const r2 = document.createElement('div'); r2.className = 'row2';
-  r2.appendChild(add('🍗 치킨', S.used.chicken ? '오늘 끝' : '하루 1번', useChicken, '', S.over || S.ap <= 0 || S.used.chicken));
-  r2.appendChild(add('🙈 리모컨', S.tvOff ? '숨김' : '숨기기', useRemote, '', S.over || S.ap <= 0 || S.tvOff));
-  bp.appendChild(r2);
+  lc.innerHTML = ''; lc.style.display = B.length ? '' : 'none';
+  B.forEach(b => { const e = document.createElement('button'); e.className = 'lb' + (b.main ? ' main' : '') + (b.hot ? ' hot' : ''); e.innerHTML = `<span class="i">${b.i}</span>${b.t}`; e.disabled = !!b.dis; e.onclick = () => { sfx('tap', true); b.f(); }; lc.appendChild(e); });
+  bp.classList.toggle('show', panelOpen);
 }
 function stateText() {
   if (!S) return '';
@@ -1273,7 +1258,7 @@ let liveStats = null;
 const nf = n => Number(n || 0).toLocaleString('ko-KR');
 async function pingVisit() {
   try { const r = await fetch(`/api/visit?g=house&id=${VID}`, { cache: 'no-store' }); if (!r.ok) throw 0; liveStats = await r.json();
-    $('liveTxt').textContent = `지금 ${nf(liveStats.online.house)}명 · 오늘 ${nf(liveStats.today.house)} · 누적 ${nf(liveStats.total.house)}`; } catch { $('liveTxt').textContent = '접속자 수를 못 불러왔어요'; }
+    $('liveTxt').textContent = `👥 ${nf(liveStats.online.house)}`; } catch { $('liveTxt').textContent = '👥 -'; }
 }
 pingVisit(); setInterval(pingVisit, 30000);
 $('liveBtn').onclick = async () => {
@@ -1293,8 +1278,12 @@ $('shareBtn').onclick = () => shareResult(S && S.over ? null : null);
 $('helpBtn').onclick = () => showCard(`<div class="em">❓</div><h2>하는 법</h2>${HELP}<button class="primary" data-a="close">계속하기</button>`, { close: closeCard });
 $('decorBtn').onclick = () => openDecor(false);
 $('bookBtn').onclick = openBook;
+$('menuBtn').onclick = e => { e.stopPropagation(); $('menu').classList.toggle('show'); };
+$('menu').addEventListener('click', () => setTimeout(() => $('menu').classList.remove('show'), 0));
+canvas.addEventListener('pointerdown', () => $('menu').classList.remove('show'));
+$('statsBtn').onclick = () => $('liveBtn').onclick();
 $('endBtn').onclick = endDay;
-let overview = false; $('viewBtn').onclick = () => { overview = !overview; toast(overview ? '집 전체 보기' : '가까이 보기', 1200); };
+let overview = false; $('viewBtn').onclick = () => { overview = !overview; $('viewBtn').textContent = overview ? '👁️ 가까이 보기' : '👁️ 집 전체 보기'; toast(overview ? '집 전체 보기' : '가까이 보기', 1200); };
 
 // =====================================================================
 // 입력
