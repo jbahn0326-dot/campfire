@@ -1238,6 +1238,9 @@ $('menuReport').onclick = () => {
 // =====================================================================
 let ws = null, connected = false, retry = 0, myId = null, clockOffset = 0;
 function send(o) { if (ws && ws.readyState === 1) { try { ws.send(JSON.stringify(o)); } catch (e) {} } }
+// 방문자 수 세기 (기기마다 한 번)
+{ let v = ''; try { v = localStorage.getItem('visitorId') || ''; } catch {} if (!/^[a-z0-9]{6,16}$/.test(v)) { v = Math.random().toString(36).slice(2, 12).replace(/[^a-z0-9]/g, 'x').padEnd(8, '0'); try { localStorage.setItem('visitorId', v); } catch {} }
+  fetch('/api/visit?g=camp&id=' + v, { cache: 'no-store' }).catch(() => {}); }
 function sendPresence() {
   if (!me.seated) return;
   send({ type: 'presence', p: { nick: me.nick, color: me.color, ani: me.ani, x: +me.x.toFixed(2), z: +me.z.toFixed(2), ry: +me.ry.toFixed(2), seat: me.seat, tent: me.tent, tool: me.tool, roast: me.roast == null ? null : +me.roast.toFixed(2), potato: me.potato != null } });

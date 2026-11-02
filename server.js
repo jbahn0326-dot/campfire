@@ -11,6 +11,72 @@ const PUB = path.join(__dirname, 'public');
 const MAX_CLIENTS = Number(process.env.MAX_CLIENTS || 300);
 const MAX_PAYLOAD = 4096;
 
+// ---------------- 방문자 통계 (지금 접속 · 오늘 · 누적) ----------------
+// 브라우저마다 기기에 저장한 아이디로 한 번만 세요. data/stats.json에 저장하고,
+// SUPABASE 설정이 있으면 site_stats 표에도 저장해서 다시 배포해도 안 사라져요.
+const GAMES = ['house', 'camp'];
+const STATS_FILE = path.join(__dirname, 'data', 'stats.json');
+const st = { total: { house: 0, camp: 0 }, days: {}, seen: { house: {}, camp: {} } };   // seen: 아이디 -> 1
+const todaySeen = { house: new Set(), camp: new Set() }; let todayKey = '';
+const housePings = new Map();      // 아이디 -> 마지막으로 연락 온 시각
+let statsDirty = false;
+const dayKey = () => new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);   // 한국 시간 기준 날짜
+function rollDay() { const k = dayKey(); if (k !== todayKey) { todayKey = k; todaySeen.house = new Set(st.days[k] && st.days[k].hs || []); todaySeen.camp = new Set(st.days[k] && st.days[k].cs || []); } return k; }
+function visit(g, id) {
+  const k = rollDay(); if (!st.days[k]) st.days[k] = { house: 0, camp: 0 };
+  if (!todaySeen[g].has(id)) { todaySeen[g].add(id); st.days[k][g]++; statsDirty = true; }
+  if (!st.seen[g][id]) { st.seen[g][id] = 1; st.total[g]++; statsDirty = true; }
+}
+function onlineNow() {
+  const n = Date.now(); for (const [id, t] of housePings) if (n - t > 75000) housePings.delete(id);
+  let camp = 0; for (const [, c] of clients) if (c.p) camp++;
+  return { house: housePings.size, camp };
+}
+function statsJson() {
+  const k = rollDay(), d = st.days[k] || { house: 0, camp: 0 };
+  const recent = Object.keys(st.days).sort().slice(-14).map(day => ({ day, house: st.days[day].house, camp: st.days[day].camp }));
+  return { online: onlineNow(), today: { house: d.house, camp: d.camp }, total: { ...st.total }, recent };
+}
+function packStats() {
+  const days = {}; for (const [k, v] of Object.entries(st.days)) days[k] = { house: v.house, camp: v.camp };
+  const k = rollDay(); if (days[k]) { days[k].hs = [...todaySeen.house]; days[k].cs = [...todaySeen.camp]; }
+  return { total: st.total, days, seen: { house: Object.keys(st.seen.house), camp: Object.keys(st.seen.camp) } };
+}
+function unpackStats(o) {
+  if (!o || typeof o !== 'object') return;
+  for (const g of GAMES) { st.seen[g] = {}; for (const id of (o.seen && o.seen[g]) || []) st.seen[g][id] = 1; st.total[g] = Math.max(Object.keys(st.seen[g]).length, (o.total && o.total[g]) || 0); }
+  st.days = o.days || {}; todayKey = ''; rollDay();
+}
+async function loadStats() {
+  try { unpackStats(JSON.parse(fs.readFileSync(STATS_FILE, 'utf8'))); } catch {}
+  if (useDb) {
+    try {
+      const r = await fetch(`${SB_URL}/rest/v1/site_stats?id=eq.visitors&select=data`, { headers: sbHeaders() });
+      if (r.ok) { const rows = await r.json(); if (rows[0] && rows[0].data) unpackStats(rows[0].data); } else console.log('ℹ️  site_stats 표가 없어서 방문자 수는 파일에만 저장돼요');
+    } catch (e) { console.log('⚠️  방문자 수 불러오기 실패:', e.message); }
+  }
+  console.log(`👥 누적 방문: 남편 개조 ${st.total.house}명, 캠핑장 ${st.total.camp}명`);
+}
+async function saveStats() {
+  if (!statsDirty) return; statsDirty = false; const data = packStats();
+  try { fs.mkdirSync(path.dirname(STATS_FILE), { recursive: true }); fs.writeFileSync(STATS_FILE, JSON.stringify(data)); } catch {}
+  if (useDb) { try { await fetch(`${SB_URL}/rest/v1/site_stats`, { method: 'POST', headers: { ...sbHeaders(), Prefer: 'resolution=merge-duplicates' }, body: JSON.stringify({ id: 'visitors', data }) }); } catch {} }
+}
+setInterval(saveStats, 60000);
+const fmt = n => Number(n).toLocaleString('ko-KR');
+function statsPage() {
+  const j = statsJson();
+  const rows = j.recent.slice().reverse().map(r => `<tr><td>${r.day}</td><td>${fmt(r.house)}</td><td>${fmt(r.camp)}</td></tr>`).join('');
+  return `<!DOCTYPE html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="refresh" content="15"><title>방문자 현황</title>
+<style>body{margin:0;background:#0b0d14;color:#eef0f7;font-family:system-ui,-apple-system,'Apple SD Gothic Neo',sans-serif;padding:20px}h1{font-size:20px;font-weight:600;margin:0 0 4px}p{color:#9aa3bd;font-size:13px;margin:0 0 16px}
+.g{display:grid;grid-template-columns:1fr 1fr;gap:12px;max-width:560px}.c{background:#181b26;border-radius:16px;padding:16px}.c h2{font-size:15px;margin:0 0 12px;font-weight:600}.n{display:flex;justify-content:space-between;margin:8px 0;font-size:14px;color:#9aa3bd}.n b{color:#fff;font-size:20px}.on b{color:#5fd38d}
+table{margin-top:18px;border-collapse:collapse;width:100%;max-width:560px;font-size:14px}td,th{padding:8px;border-bottom:1px solid #222636;text-align:right}td:first-child,th:first-child{text-align:left}th{color:#9aa3bd;font-weight:400}</style></head><body>
+<h1>👥 방문자 현황</h1><p>15초마다 새로 고쳐져요 · 한국 시간 ${new Date(Date.now() + 9 * 3600e3).toISOString().slice(11, 16)}</p>
+<div class="g"><div class="c"><h2>🛋️ 남편 개조</h2><div class="n on">지금 접속 <b>${fmt(j.online.house)}</b></div><div class="n">오늘 방문 <b>${fmt(j.today.house)}</b></div><div class="n">누적 방문 <b>${fmt(j.total.house)}</b></div></div>
+<div class="c"><h2>🔥 캠핑장</h2><div class="n on">지금 접속 <b>${fmt(j.online.camp)}</b></div><div class="n">오늘 방문 <b>${fmt(j.today.camp)}</b></div><div class="n">누적 방문 <b>${fmt(j.total.camp)}</b></div></div></div>
+<table><tr><th>날짜</th><th>남편 개조</th><th>캠핑장</th></tr>${rows}</table></body></html>`;
+}
+
 // ---------------- 정적 파일 ----------------
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.png': 'image/png', '.js': 'text/javascript; charset=utf-8',
@@ -21,6 +87,13 @@ const server = http.createServer((req, res) => {
   let u;
   try { u = decodeURIComponent((req.url || '/').split('?')[0]); } catch { res.writeHead(400); return res.end(); }
   if (u === '/healthz') { res.writeHead(200, { 'Content-Type': 'text/plain' }); return res.end('ok'); }
+  if (u === '/api/visit') {
+    const q = new URLSearchParams((req.url || '').split('?')[1] || ''); const g = q.get('g'), id = q.get('id') || '';
+    if (GAMES.includes(g) && /^[a-z0-9]{6,16}$/.test(id)) { visit(g, id); if (g === 'house') housePings.set(id, Date.now()); }
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); return res.end(JSON.stringify(statsJson()));
+  }
+  if (u === '/api/stats') { res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); return res.end(JSON.stringify(statsJson())); }
+  if (u === '/stats') { res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }); return res.end(statsPage()); }
   if (u === '/config.json') {
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache' });
     return res.end(JSON.stringify({ donateUrl: /^https:\/\//.test(process.env.DONATE_URL || '') ? process.env.DONATE_URL : '' }));
@@ -347,4 +420,6 @@ function houseUpgrade(socket, key) {
 }
 setInterval(() => { for (const c of houseConns) { if (!c.alive) { c._end(); continue; } c.alive = false; c.ping(); } }, 30000);
 
+loadStats();
+for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => { statsDirty = true; saveStats().finally(() => process.exit(0)); setTimeout(() => process.exit(0), 3000); });
 server.listen(PORT, () => console.log(`🔥 모닥불 캠핑장이 열렸어요: http://localhost:${PORT}`));
