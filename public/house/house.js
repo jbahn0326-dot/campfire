@@ -20,7 +20,13 @@ const store = {
 };
 const params = new URLSearchParams(location.search);
 let JOIN = (params.get('room') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
-let ROLE = 'solo';          // solo | wife | husband
+let ROLE = 'solo';
+let EP = 'sofa';           // 에피소드: sofa(1화) | drink(2화)
+const EPISODES = {
+  sofa: { no: 1, icon: '🛋️', name: '소파 일체형 남편', desc: '7일 안에 집안일 하는 남자로!', long: '소파와 한 몸이 된 남편을 칭찬·잔소리·치킨으로 꼬셔서 7일 안에 스스로 집안일 하는 남자로 개조해요.' },
+  drink: { no: 2, icon: '🍺', name: '술고래 남편', desc: '7일 금주 달력 채우기', long: '매일 저녁 "한 잔만…"을 외치는 남편! 부장님 전화, 친구 단톡, 야구 중계 유혹을 막고 탄산수·산책·홈트로 버티게 해서 7일 금주 도장을 채워요.' },
+  quit: { no: 3, icon: '💼', name: '회사 때려치겠다는 남편', desc: '공개 예정', locked: true }
+};          // solo | wife | husband
 let peerOn = false;
 
 // =====================================================================
@@ -593,14 +599,19 @@ const ENDINGS = [
   { id: 'runaway', icon: '🏃', name: 'PC방 가출', hint: '반발심 100' },
   { id: 'chicken', icon: '🍗', name: '치킨으로 키운 남편', hint: '치킨 5번 이상 시키고 끝내기' },
   { id: 'self', icon: '🙋', name: '스스로 하는 남자', hint: '부부 모드에서 남편이 스스로 3번' },
-  { id: 'drunk', icon: '🍯', name: '취객 조련사', hint: '술 취한 남편을 소파에 재우기' }
+  { id: 'drunk', icon: '🍯', name: '취객 조련사', hint: '술 취한 남편을 소파에 재우기' },
+  { id: 'd7', ep: 'drink', icon: '🍀', name: '7일 금주 성공', hint: '2화 · 금주 도장 7개' },
+  { id: 'd5', ep: 'drink', icon: '😌', name: '거의 금주', hint: '2화 · 금주 도장 5~6개' },
+  { id: 'd3', ep: 'drink', icon: '🙂', name: '반쯤 참았어요', hint: '2화 · 금주 도장 3~4개' },
+  { id: 'dwhale', ep: 'drink', icon: '🐳', name: '술고래 그대로', hint: '2화 · 금주 도장 2개 이하' },
+  { id: 'dgym', ep: 'drink', icon: '💪', name: '홈트 중독', hint: '2화 · 홈트 5번 이상' }
 ];
 let S = null;
 function reqOf(c) { let r = c.req - (S.habit[c.id] || 0) * 10 + (S.mod[c.id] || 0); if (S.together) r -= 25; return clamp(r, 5, 100); }
 function pm(k, d = 1) { const m = PERS[S.pers].m; return (m[k] ?? d) * (m.all && (k === 'praise' || k === 'nag' || k === 'sigh' || k === 'chicken' || k === 'together') ? m.all : 1); }
 
 function newGame(pers) {
-  S = { day: 1, ap: AP_MAX, mot: 15, res: 5, hab: 0, used: {}, habit: {}, mod: {}, done: {}, tvOff: false, together: false, tv: false, over: false, busy: false, pers, extra: null, chickens: 0, selfCount: 0, pending: null, accepted: null, stage: 0, ending: null, gifted: {} };
+  S = { day: 1, ap: AP_MAX, mot: 15, res: 5, hab: 0, used: {}, habit: {}, mod: {}, done: {}, tvOff: false, together: false, tv: false, over: false, busy: false, pers, extra: null, chickens: 0, selfCount: 0, pending: null, accepted: null, stage: 0, ending: null, gifted: {}, ep: EP, crave: 35, will: 15, cal: [], clock: 0, hidden: false, tempt: null, relapsed: false, workouts: 0 };
   applyPers(); H.root.visible = true; setGloves(H, false); updateOutfit(true); startDay(true);
 }
 function applyPers() { const P = PERS[S.pers]; H.headG.children.forEach(m => { if (m.material === undefined) return; }); hairColor(H, P.hair); setTags(); }
@@ -608,6 +619,8 @@ function hairColor(ch, c) { ch.headG.traverse(m => { if (m.isMesh && m.material 
 function startDay(first) {
   Object.assign(S, { ap: AP_MAX, used: {}, mod: {}, done: {}, tvOff: false, together: false, tv: false, busy: false, pending: null, accepted: null, drunk: 0, slept: false, gifted: {} });
   drunkMess.clear(); H.drunk = false; H.drunkHold = false; H.speed = 2.5; H.cheekM.color.copy(PM.cheek.color); H.cheeks.forEach(c => c.scale.set(1, 0.6, 0.4)); H.mug.visible = W.mug.visible = false; H.root.visible = true;
+  if (EP === 'drink') { startDrinkDay(first); return; }
+  beerG.visible = false;
   if (!first) S.mot = Math.round(S.mot * 0.3) + 12;
   const e = first ? EVENTS[0] : pickEvent(); if (e.tv) S.tv = true; if (e.f) e.f();
   let yday = '';
@@ -629,8 +642,9 @@ const remoteH = () => H.state === 'remote';
 function canAct() {
   if (!S || S.over || ROLE === 'husband') return false;
   if (drunkOn()) { toast('🍺 술 취한 남편한테는 왼쪽 취객 대처 버튼을 써요'); return false; }
-  if (S.slept) { toast('💤 남편이 자고 있어요. 🌙 버튼으로 하루를 마쳐요'); return false; }
-  if (S.busy) { toast('남편이 집안일 하는 중이에요. 끝날 때까지 기다려요'); return false; }
+  if (S.slept || (EP === 'drink' && S.midnight)) { toast('💤 남편이 자고 있어요. 🌙 버튼으로 하루를 마쳐요'); return false; }
+  if (EP === 'drink' && S.tempt) { toast('📞 먼저 유혹 전화에 대답해 줘요!'); return false; }
+  if (S.busy) { toast(S.busyLabel ? `${S.busyLabel}… 끝날 때까지 기다려요` : '남편이 집안일 하는 중이에요. 끝날 때까지 기다려요'); return false; }
   if (H.state === 'sneaking' || H.state === 'returning' || H.state === 'working') { toast('남편이 어디론가 가고 있어요…'); return false; }
   if (H.state === 'gifting') { toast('🎁 남편이 뭔가 준비하고 있어요… 잠깐만 기다려 봐요'); return false; }
   if (S.ap <= 0) { toast('행동력이 없어요. 🌙 버튼으로 하루를 마쳐요'); return false; }
@@ -709,8 +723,8 @@ const drunkMess = new THREE.Group(); scene.add(drunkMess);
 const drunkStink = [];
 for (let i = 0; i < 4; i++) { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: SOFT, color: 0x9bd36a, transparent: true, opacity: 0, depthWrite: false })); s.scale.setScalar(0.28); s.userData.ph = i * 0.9; scene.add(s); drunkStink.push(s); }
 const drunkOn = () => !!(S && S.drunk > 0);
-function startDrunkNight() {
-  S.drunk = 85; S.socks = true; S.photo = false;
+function startDrunkNight(level = 85) {
+  S.drunk = level; S.socks = true; S.photo = false;
   H.path = []; H.onArrive = null; H.inner.rotation.set(0, 0, 0); H.shadow.visible = true; H.pose = 'idle'; H.root.visible = false; H.state = 'out'; H.drunk = true;
   H.cheekM.color.set(0xff5050); H.cheeks.forEach(c => c.scale.set(1.6, 1, 0.5));
   setTimeout(() => {
@@ -863,6 +877,120 @@ function hGift(kind) {
   if (kind === 'coffee') walk(H, 4.2, -4.75, () => { pose(H, 'work', 900); sfx('water', true); setTimeout(give, 1000); });
   else give();
 }
+
+// =====================================================================
+// 2화: 술고래 남편 (저녁 6시~자정까지 술 생각을 100 아래로 지키기)
+// =====================================================================
+const DAY_LEN = 100;   // 저녁 6시 → 자정 (초)
+const beerG = new THREE.Group(); scene.add(beerG);
+[[2.3, -5.5], [2.52, -5.58], [2.72, -5.45], [2.45, -5.36]].forEach(([x, z]) => { cyl(0.05, 0.05, 0.16, 0xd9b13a, x, 1.03, z, beerG, 10); cyl(0.051, 0.051, 0.03, 0xc0c6cc, x, 1.12, z, beerG, 10); });
+cyl(0.05, 0.05, 0.16, 0xd9b13a, -3.35, 0.56, -0.9, beerG, 10);
+beerG.visible = false;
+const TEMPTS = [
+  { icon: '📞', who: '부장님', text: '김대리~ 오늘 한잔 어때? 내가 쏜다!', ch: [{ t: '😷 오늘 아내 생일이라서요', c: -12, w: 6 }, { t: '🏥 내일 건강검진이에요', c: -15, w: 4 }, { t: '🍺 딱 한 잔만요!', c: 30, w: -8, bad: true }] },
+  { icon: '💬', who: '고딩 친구 단톡', text: '야 치맥 콜? 다 모였다 ㅋㅋ', ch: [{ t: '🙅 나 금주 중이다', c: -10, w: 8 }, { t: '🥤 나는 제로콜라 ㅋ', c: -8, w: 5 }, { t: '🍗 치킨만 먹고 올게…', c: 25, w: -6, bad: true }] },
+  { icon: '📺', who: '야구 중계', text: '9회말 역전 찬스! (맥주 광고가 나온다…)', ch: [{ t: '🥤 탄산수로 건배!', c: -12, w: 3 }, { t: '📴 TV 끄고 스트레칭', c: -15, w: 5 }, { t: '🍺 이건 맥주 각이지', c: 28, w: -6, bad: true }] },
+  { icon: '🏪', who: '편의점 앱', text: '[오늘만] 수입맥주 4캔 만 원 🍻', ch: [{ t: '🗑️ 알림 끄기', c: -10, w: 4 }, { t: '🧃 식혜 4캔 담기', c: -12, w: 3 }, { t: '🛒 장바구니 담기', c: 25, w: -5, bad: true }] },
+  { icon: '📞', who: '시아버지', text: '아들~ 주말에 내려와서 한잔 하자!', ch: [{ t: '🍵 아버지, 차 한 잔 해요', c: -10, w: 6 }, { t: '⛳ 대신 같이 산책 가요', c: -12, w: 5 }, { t: '🍶 좋죠! 막걸리!', c: 22, w: -5, bad: true }] },
+  { icon: '🍖', who: '고기 굽는 냄새', text: '옆집에서 삼겹살 굽는다… 소주 생각이…', ch: [{ t: '🥬 우리는 쌈 채소 먹자', c: -10, w: 4 }, { t: '🚶 바람 쐬고 올게', c: -12, w: 5 }, { t: '🍾 소주 한 병만…', c: 26, w: -6, bad: true }] }
+];
+const shuffle = a => a.map(v => [Math.random(), v]).sort((x, y) => x[0] - y[0]).map(x => x[1]);
+let drinkUIt = 0;
+function craveRate() { return 0.7 * (1 - S.will / 140) * (S.res >= 60 ? 1.35 : 1) * (S.hidden ? 0.8 : 1); }
+function crave(v) { v = Math.round(v); S.crave = clamp(S.crave + v, 0, 100); if (v) floatAt(H, `${v > 0 ? '+' : ''}${v} 술 생각`, v < 0 ? '#8fe3b8' : '#ff8a7a'); renderBars(); }
+function will(v) { v = Math.round(v); S.will = clamp(S.will + v, 0, 100); if (v) setTimeout(() => floatAt(H, `${v > 0 ? '+' : ''}${v} 참을성`, v > 0 ? '#ffd23a' : '#ff8a7a'), 300); renderBars(); }
+const clockStr = () => { const m = 18 * 60 + Math.floor(S.clock / DAY_LEN * 360); return `${String(Math.floor(m / 60) % 24).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; };
+function startDrinkDay(first) {
+  for (const k in mess) mess[k].visible = false; dusts.forEach(d => d.visible = false); S.extra = null;
+  chickenBox.visible = false; remote.visible = true; beerG.visible = true;
+  if (!first) { S.crave = clamp(Math.round(S.crave * 0.4) + 28, 0, 90); S.will = Math.round(S.will * 0.8); }
+  Object.assign(S, { clock: 0, hidden: false, tempt: null, relapsed: false, midnight: false, temptT: 7 });
+  let msg = '';
+  if (!first && S.tomorrow) { const tm = S.tomorrow; S.ap += tm.ap || 0; if ((tm.mot || 0) > 0) { S.will = clamp(S.will + 15, 0, 100); msg = '\n😳 어제 재워 줘서 남편이 반성 중 (참을성 +15)'; } else msg = '\n' + tm.msg; S.tomorrow = null; }
+  if (H.state !== 'remote') lieDown(); H.sub = 'phone';
+  W.path = []; W.onArrive = null; W.pose = 'idle'; W.root.position.set(-1.0, 0, 1.9); W.root.rotation.y = -Math.PI / 2;
+  const n = S.cal.filter(Boolean).length;
+  toast((first ? '🍺 2화 · 술고래 남편! 자정까지 술 생각을 100 아래로 지키면 금주 도장 ✅' : `🍺 ${S.day}일차 저녁 6시 · 금주 도장 ${n}개`) + msg, 5500);
+  setTimeout(() => { if (H.state === 'couch' && !S.over) say(H, pick(['아… 시원한 맥주 한 캔만…', '오늘 회사에서 너무 힘들었어…', '치킨엔 맥주인데…'])); }, 1200);
+  closePanel(); render();
+}
+function spawnTempt() {
+  const T = pick(TEMPTS.filter(x => x !== S.lastTempt)); S.lastTempt = T; S.tempt = { T, left: 9 };
+  sfx('bell'); H.sub = 'phone'; H.idleT = 99; say(H, `${T.icon} "${T.text}"`, false, 4500); emote(H, 'shock', 1500);
+  openPanel(`<div class="q"><span>${T.icon} <b>${T.who}</b>의 유혹! 남편한테 뭐라고 하라고 할까요?</span><small id="tleft">⏰ 9초</small></div>`,
+    shuffle(T.ch).map(c => ({ t: c.t, f: () => resolveTempt(c, false) })), true);
+  renderBars();
+}
+function resolveTempt(c, auto) {
+  if (!S || !S.tempt) return; S.tempt = null; closePanel(); H.idleT = 2;
+  say(H, c.t.replace(/^\S+\s/, '') + (c.bad ? ' 🍺' : ''));
+  if (c.bad) { emote(W, 'angry', 2000); pose(W, 'nag', 1500); setTimeout(() => say(W, '여보!!! 😤'), 500); sfx('no'); emote(H, 'smile'); }
+  else { pose(W, 'heart', 1200); sfx('ok'); emote(H, 'flat', 1500); }
+  crave(c.c); if (c.w) will(c.w);
+  if (auto) toast(c.bad ? '⏰ 시간 초과! 남편이 알아서 대답했는데… 망했다 🍺' : '⏰ 시간 초과! 다행히 남편이 잘 거절했어요', 3000);
+  if (S.crave >= 100 && !S.busy) relapse();
+  render();
+}
+function relapse() {
+  if (!S || S.relapsed || S.over) return; S.relapsed = true; S.tempt = null; closePanel(); S.cal[S.day - 1] = 0;
+  toast('🍺 술 생각을 못 참고… 남편이 "편의점 다녀올게~" 하고 나갔어요!', 4500); sfx('door');
+  H.path = []; H.onArrive = null; if (H.pose === 'lie') standUp(); H.state = 'sneaking'; H.pose = 'sneak'; say(H, '(잠깐 편의점 좀…)'); emote(H, 'flat', 3000);
+  walk(H, 0.3, 5.0, () => { H.root.visible = false; startDrunkNight(60); render(); });
+  render();
+}
+function drinkTick(dt) {
+  if (EP !== 'drink' || !S || S.over || ROLE === 'husband' || S.relapsed || drunkOn() || S.slept || S.midnight) return;
+  S.clock = Math.min(DAY_LEN, S.clock + dt);
+  if (S.clock >= DAY_LEN) { S.midnight = true; S.tempt = null; closePanel(); H.sub = 'snore'; H.idleT = 999; say(H, '💤', true, 4000); toast('🕛 자정! 남편이 잠들었어요. 🌙 를 눌러 금주 도장을 받아요', 4500); render(); return; }
+  if (!S.busy) S.crave = clamp(S.crave + craveRate() * dt, 0, 100);
+  if (S.tempt) {
+    S.tempt.left -= dt; const el = $('tleft'); if (el) el.textContent = `⏰ ${Math.max(0, Math.ceil(S.tempt.left))}초`;
+    if (S.tempt.left <= 0) { const T = S.tempt.T, bad = T.ch.find(c => c.bad); resolveTempt(Math.random() < 0.55 - S.will / 300 ? bad : pick(T.ch.filter(c => !c.bad)), true); }
+  } else if (H.state === 'couch' && !S.busy && !panelOpen && W.pose !== 'mug') {
+    S.temptT -= dt; if (S.temptT <= 0 && S.clock < DAY_LEN - 8) { S.temptT = rand(16, 24); spawnTempt(); }
+  }
+  if (S.crave >= 100 && !S.busy) { relapse(); return; }
+  drinkUIt += dt; if (drinkUIt > 0.5) { drinkUIt = 0; renderBars(); }
+}
+function drinkNight() {
+  if (S.relapsed) { S.cal[S.day - 1] = 0; return '❌ 오늘은 못 참았어요…\n내일은 꼭!'; }
+  const left = Math.max(0, DAY_LEN - S.clock), proj = S.crave + craveRate() * left + Math.floor(left / 20) * 9;   // 남은 시간 동안 올 유혹까지 계산
+  if (proj >= 100) { S.cal[S.day - 1] = 0; return '🌙 밤늦게… 남편이 몰래\n편의점에 다녀왔어요 🍺❌'; }
+  S.cal[S.day - 1] = 1; return `🍀 오늘 밤도 무사히!\n금주 도장 쾅 ✅ (${S.cal.filter(Boolean).length}/7)`;
+}
+function busyDo(label, fn) { S.busy = true; S.busyLabel = label; render(); fn(() => { S.busy = false; S.busyLabel = null; render(); }); }
+const DRINK_ACTS = {
+  soda: { icon: '🥤', name: '탄산수', run() {
+    if (!canAct()) return; S.ap--; render(); closePanel();
+    walk(W, 6.95, -4.35, () => { faceTo(W, 7.35, -5.5); pose(W, 'work', 800); sfx('water');
+      setTimeout(() => { W.mug.visible = true; W.pose = 'mug'; goHusband(() => { say(W, '맥주 대신 탄산수! 톡 쏘지? 🥤');
+        setTimeout(() => { W.mug.visible = false; W.pose = 'idle'; hSay(pick(['크… 이것도 나쁘지 않네', '시원하다~ 근데 맥주는 아니잖아…', '오 레몬 맛이네?'])); crave(-20); will(4); render(); }, 700); }); }, 900); }); } },
+  praise: { icon: '💬', name: '칭찬', run() {
+    if (!canAct()) return; S.ap--; render();
+    goHusband(() => { say(W, pick(['요즘 술 안 마시니까 얼굴이 훤해!', '역시 우리 남편 의지 최고!', '배가 쏙 들어간 것 같은데?'])); pose(W, 'heart'); sfx('praise');
+      setTimeout(() => { will(15 * Math.pow(0.75, S.used.praise || 0) * pm('praise')); S.used.praise = (S.used.praise || 0) + 1; crave(-5); res(-5); hSay(pick(['진짜? 나 좀 참았지 ㅎㅎ', '그치? 나 요즘 대단하지', '😊'])); hFace('smile'); render(); }, 600); }); } },
+  nag: { icon: '📢', name: '잔소리', run() {
+    if (!canAct()) return; S.ap--; render();
+    goHusband(() => { say(W, pick(['또 맥주 생각하지?!', '간 수치 생각 좀 해!!', '그 배는 다 맥주야!'])); pose(W, 'nag'); emote(W, 'angry'); sfx('nag');
+      setTimeout(() => { will(6); crave(8); res(15 * pm('nagRes')); hSay(pick(['아 알았어 알았어…', '스트레스 받으니까 더 마시고 싶네…'])); hFace('angry', 2500); render(); check(); }, 600); }); } },
+  hide: { icon: '🫙', name: '술 숨기기', run() {
+    if (!canAct()) return; if (S.hidden) { toast('술은 이미 숨겼어요 🤫'); return; } S.ap--; render(); closePanel();
+    walk(W, 2.5, -4.6, () => { faceTo(W, 2.5, -5.6); pose(W, 'work', 1000); sfx('scrub');
+      setTimeout(() => { beerG.visible = false; S.hidden = true; say(W, '(맥주를 몰래 숨긴다…🤫)'); crave(-8); toast('🫙 집에 있는 술을 다 숨겼어요! 오늘은 술 생각이 천천히 올라요', 3500); setTimeout(() => hSay('어? 냉장고 맥주 어디 갔지…?'), 1800); render(); }, 1000); }); } },
+  walk: { icon: '🚶', name: '같이 산책', run() {
+    if (!canAct()) return; S.ap--; closePanel();
+    goHusband(() => { say(W, '여보, 우리 바람 쐬러 가자!'); busyDo('🚶 같이 산책 중', done => {
+      standUp(); H.state = 'working'; hSay('그래… 나가자'); sfx('heart');
+      walkSeq(H, [[12.4, 4.2], [14.6, 3.6]], () => { faceTo(H, 16, 3.6); say(H, '와… 밤공기 좋다~'); setTimeout(() => { crave(-25); will(8); walk(H, COUCH_SIDE[0], COUCH_SIDE[1], () => { lieDown(); done(); }); }, 1500); });
+      walkSeq(W, [[12.2, 4.9], [14.4, 4.5]], () => { faceTo(W, 16, 4.5); W.pose = 'heart'; setTimeout(() => { W.pose = 'idle'; walk(W, -2.9, 0.35); }, 1500); });
+    }); }); } },
+  gym: { icon: '💪', name: '홈트', run() {
+    if (!canAct()) return; S.ap--; closePanel();
+    goHusband(() => { say(W, '맥주 생각날 땐 운동이지! 스쿼트 20개!'); busyDo('💪 홈트 중', done => {
+      standUp(); H.state = 'working'; hSay('헉헉… 이거 맞아?');
+      walk(H, 0.4, 0.2, () => { faceTo(H, 0.4, 3); H.pose = 'work'; let k = 0; const iv = setInterval(() => { const p = H.root.position; burst(p.x, 1.4, p.z, 3, 0x9fd8ff, 0.6, 0.12); sfx('scrub', true); if (++k >= 10) { clearInterval(iv); H.pose = 'cheer'; say(H, '오… 개운한데? 💪'); crave(-18); will(12); res(4); S.workouts = (S.workouts || 0) + 1; setTimeout(() => { H.pose = 'idle'; walk(H, COUCH_SIDE[0], COUCH_SIDE[1], () => { lieDown(); done(); }); }, 1200); } }, 250); });
+    }); }); } }
+};
 // 집안일 시키기
 function command(c) {
   if (!canAct() || S.done[c.id]) return;
@@ -940,12 +1068,23 @@ function check() {
 }
 function endDay() {
   if (!S || S.over || ROLE === 'husband') return; if (S.busy) { toast('남편이 일 끝나면 하루를 마칠 수 있어요'); return; }
-  closePanel(); const txt = S.day >= 7 ? '일주일이 지났어요…' : `${S.day}일차 끝 · 잘 자요 💤`; night(txt); net({ k: 'night', t: txt }); sfx('night');
-  setTimeout(() => { S.res = clamp(S.res - 15, 0, 100); if (drunkOn()) S.tomorrow = { ap: -1, mot: -10, msg: '🤢 어제 그냥 둬서 남편이 숙취로 골골… 행동력 -1, 의욕 -10' }; if (S.day >= 7) finish(); else { S.day++; startDay(); } }, 1200);
+  closePanel(); let txt = S.day >= 7 ? '일주일이 지났어요…' : `${S.day}일차 끝 · 잘 자요 💤`;
+  if (EP === 'drink') txt = drinkNight() + (S.day >= 7 ? '\n일주일이 지났어요…' : '');
+  night(txt, EP === 'drink' ? 2400 : 1600); net({ k: 'night', t: txt }); sfx('night');
+  setTimeout(() => { S.res = clamp(S.res - 15, 0, 100); if (drunkOn()) S.tomorrow = { ap: -1, mot: -10, msg: '🤢 어제 그냥 둬서 남편이 숙취로 골골… 행동력 -1, 의욕 -10' }; if (S.day >= 7) finish(); else { S.day++; startDay(); } }, EP === 'drink' ? 2000 : 1200);
 }
-function night(t) { $('night').textContent = t; $('night').classList.add('on'); setTimeout(() => $('night').classList.remove('on'), 1600); }
+function night(t, ms = 1600) { $('night').textContent = t; $('night').classList.add('on'); setTimeout(() => $('night').classList.remove('on'), ms); }
 function finish() {
-  S.over = true; const h = S.hab;
+  S.over = true;
+  if (EP === 'drink') {
+    const n = S.cal.filter(Boolean).length; S.hab = Math.round(n / 7 * 100);
+    if (n >= 7) endGame('d7', '🍀', '7일 금주 성공!', '일주일 내내 한 방울도 안 마셨어요! 남편 얼굴에 광이 나고 뱃살이 쏙 들어갔어요. 이제 맥주 대신 탄산수로 건배!');
+    else if (n >= 5) endGame('d5', '😌', '거의 금주 성공', `금주 도장 ${n}개! 딱 한두 번 무너졌지만 이 정도면 대단해요. 다음 주엔 7개 가 보자고요.`);
+    else if (n >= 3) endGame('d3', '🙂', '반쯤 참았어요', `금주 도장 ${n}개. 유혹 전화가 오면 바로 거절 멘트를 골라 주는 게 핵심이에요!`);
+    else endGame('dwhale', '🐳', '술고래 그대로…', `금주 도장 ${n}개… 남편은 여전히 바다를 헤엄치는 술고래예요. 팁: 술 숨기기 → 탄산수 → 산책!`);
+    return;
+  }
+  const h = S.hab;
   if (h >= 70) endGame('almost', '😎', '거의 개조됨', `개조율 ${h}%. 시키면 군말 없이 해요. 스스로 하는 날도 머지않았어요!`);
   else if (h >= 40) endGame('half', '🙂', '반쯤 개조됨', `개조율 ${h}%. 설거지까지는 해요. 화장실은… 아직 미지의 영역.`);
   else endGame('sofa', '🛋️', '소파 일체형 남편', `개조율 ${h}%. 일주일이 지났지만 남편은 여전히 소파와 한 몸이에요. 팁: 칭찬 2번 → 같이 하자 → 시키기!`);
@@ -956,6 +1095,7 @@ function endGame(id, em, title, text, fromNet) {
   if (S && S.chickens >= 5) extra.push('chicken');
   if (S && S.selfCount >= 3) extra.push('self');
   if (S && S.drunkSaved >= 1) extra.push('drunk');
+  if (S && S.workouts >= 5) extra.push('dgym');
   const add = [id, ...extra].filter(e => !got.includes(e)); store.set('endings', got.concat(add));
   if (!fromNet) net({ k: 'end', id, em, title, text, ch: S ? S.chickens : 0, sc: S ? S.selfCount : 0 });
   const newOnes = add.map(e => ENDINGS.find(x => x.id === e)).filter(Boolean);
@@ -1114,6 +1254,9 @@ function renderControls() {
   } else if (S && drunkOn()) {
     B.push(lbtn('🛌', H.state === 'out' ? '귀가 중…' : `재우기 ${S.drunk}%`, putToBed, { main: true, hot: S.drunk <= 40 && H.state === 'drunk', dis: S.over || H.state !== 'drunk' }));
     Object.entries(DRUNK_ACTS).forEach(([k, a]) => B.push(lbtn(a.icon, a.name.replace(' 스매싱', '').replace(' 벗기기', '').replace('증거 ', ''), () => a.run(), { dis: S.over || (k !== 'photo' && S.ap <= 0) || (k === 'photo' && S.photo) || (k === 'socks' && !S.socks) })));
+  } else if (S && EP === 'drink') {
+    B.push(lbtn('🥤', '탄산수', () => DRINK_ACTS.soda.run(), { main: true, hot: S.crave >= 60 && S.ap > 0, dis: S.over || S.ap <= 0 || S.busy || S.midnight }));
+    ['praise', 'nag', 'hide', 'walk', 'gym'].forEach(k => { const a = DRINK_ACTS[k]; B.push(lbtn(a.icon, a.name.replace('같이 ', '').replace('술 ', ''), () => a.run(), { dis: S.over || S.ap <= 0 || S.busy || S.midnight || (k === 'hide' && S.hidden) })); });
   } else if (S) {
     const can = todays().some(c => !S.done[c.id] && S.mot >= reqOf(c));
     B.push(lbtn('🧹', S.pending ? '대답 기다림' : S.accepted ? '하는 중…' : '시키기', openChores, { main: true, hot: can && !S.busy && !remoteH(), dis: S.over || S.busy }));
@@ -1129,28 +1272,46 @@ function stateText() {
   if (drunkOn()) return H.state === 'out' ? '🚪 귀가 중…' : `🍺 만취 ${S.drunk}%`;
   if (S.slept) return '💤 꿀잠 중';
   if (H.state === 'gifting') return '🎁 뭔가 준비 중…';
+  if (EP === 'drink' && S.busyLabel) return S.busyLabel;
   if (H.state === 'hiding') return H.hide ? H.hide.label : '🫣 숨어 있음';
   if (H.state === 'sneaking') return '🤫 슬금슬금';
   if (H.state === 'leaving') return '💢 가출 중';
   if (H.state === 'working' || (hJob && ROLE === 'husband')) return '🧽 집안일 하는 중';
   if (S.accepted) return '🧽 집안일 하는 중';
   if (S.pending) return '🤔 고민 중…';
+  if (EP === 'drink') { if (S.relapsed) return '🏪 편의점 가는 중…'; if (S.tempt) return '📞 유혹 받는 중!'; if (S.midnight) return '😴 잠듦 · 오늘 버팀!'; return S.crave >= 80 ? '😵 술 생각 폭발 직전' : S.crave >= 50 ? '🍺 맥주 생각 중…' : '😌 잘 버티는 중'; }
   if (S.res >= 70) return '😤 단단히 삐짐';
   if (H.pose === 'lie') return S.mot >= 60 ? '😆 의욕 충전 완료' : S.mot >= 30 ? '🙂 일어날까 고민 중' : '🛋️ 소파 흡착 중';
   return S.mot >= 60 ? '😆 뭐든 할 기세' : '🚶 돌아다니는 중';
 }
+function renderBars() {
+  if (!S) return;
+  const L = (id, t) => { $(id).textContent = t; };
+  if (EP === 'drink') {
+    const n = S.cal.filter(Boolean).length;
+    $('dayTxt').textContent = `${S.day}일차 · ${clockStr()}`;
+    L('l1', '참을성'); $('mot').style.width = S.will + '%'; $('motV').textContent = Math.round(S.will); $('mot').style.background = '#ffd23a';
+    L('l2', '술 생각'); $('res').style.width = S.crave + '%'; $('resV').textContent = Math.round(S.crave); $('res').style.background = S.crave >= 80 ? '#ef4a4a' : '#ff9a4a';
+    L('l3', '금주'); $('hab').style.width = (n / 7 * 100) + '%'; $('habV').textContent = `${n}/7`;
+    $('calRow').classList.add('show'); $('calRow').innerHTML = Array.from({ length: 7 }, (_, i) => `<i class="${S.cal[i] === 1 ? 'ok' : S.cal[i] === 0 ? 'no' : ''}${i === S.day - 1 && !S.over ? ' today' : ''}">${S.cal[i] === 1 ? '✓' : S.cal[i] === 0 ? '✕' : i + 1}</i>`).join('');
+  } else {
+    $('dayTxt').textContent = `${S.day}일차 / 7`;
+    L('l1', '의욕'); L('l2', '반발'); L('l3', '개조'); $('mot').style.background = '#5fd38d'; $('res').style.background = '#ef6a5a'; $('calRow').classList.remove('show');
+    $('mot').style.width = S.mot + '%'; $('motV').textContent = S.mot; $('res').style.width = S.res + '%'; $('resV').textContent = S.res >= 70 ? S.res + ' 삐짐' : S.res; $('hab').style.width = S.hab + '%'; $('habV').textContent = S.hab + '%';
+  }
+  HL.state.textContent = stateText();
+  if (drunkOn()) { HL.bar.style.width = S.drunk + '%'; HL.num.textContent = '🍺' + S.drunk; HL.bar.style.background = '#ff9a4a'; }
+  else if (EP === 'drink') { HL.bar.style.width = S.crave + '%'; HL.num.textContent = '🍺' + Math.round(S.crave); HL.bar.style.background = S.crave >= 80 ? '#ef4a4a' : '#ff9a4a'; }
+  else { HL.bar.style.width = S.mot + '%'; HL.num.textContent = S.mot; HL.bar.style.background = S.res >= 70 ? '#ef6a5a' : '#5fd38d'; }
+}
 function render() {
   if (!S) { renderControls(); return; }
-  $('dayTxt').textContent = `${S.day}일차 / 7`;
+  renderBars();
   $('apBox').innerHTML = (ROLE === 'husband' ? '아내 ' : '') + '⚡' + Array.from({ length: Math.max(AP_MAX, S.ap) }, (_, i) => `<span class="${i < S.ap ? (i >= AP_MAX ? 'bonus' : '') : 'off'}"></span>`).join('');
-  $('mot').style.width = S.mot + '%'; $('motV').textContent = S.mot; $('res').style.width = S.res + '%'; $('resV').textContent = S.res >= 70 ? S.res + ' 삐짐' : S.res; $('hab').style.width = S.hab + '%'; $('habV').textContent = S.hab + '%';
   $('whoTxt').textContent = `${PERS[S.pers].icon} ${PERS[S.pers].name}` + (ROLE === 'solo' ? ' · 혼자 하기' : ROLE === 'wife' ? (peerOn ? ` · 💑 남편 접속 중 (방 ${roomCode})` : ` · 방 ${roomCode || '…'} · 남편 기다리는 중`) : (peerOn ? ' · 💑 아내와 연결됨' : ' · 아내 기다리는 중'));
   $('endBtn').disabled = ROLE === 'husband' || S.busy || S.over;
   screenMat.color.set(S.tvOff ? 0x0b0b10 : S.tv ? 0x3fbf5a : 0x5a8cff); tvL.intensity = S.tvOff ? 0 : 5;
   plantOk.visible = !mess.plant.visible; bedNeat.visible = !mess.bed.visible; hung.visible = !mess.hang.visible;
-  HL.state.textContent = stateText();
-  if (drunkOn()) { HL.bar.style.width = S.drunk + '%'; HL.num.textContent = '🍺' + S.drunk; HL.bar.style.background = '#ff9a4a'; }
-  else { HL.bar.style.width = S.mot + '%'; HL.num.textContent = S.mot; HL.bar.style.background = S.res >= 70 ? '#ef6a5a' : '#5fd38d'; }
   renderControls();
   if (panelOpen && !panelSticky && ROLE !== 'husband' && $('bpanel').querySelector('.q') && $('bpanel').querySelector('.q').textContent.startsWith('🧹')) openChores();
 }
@@ -1169,23 +1330,39 @@ const HELP = `<p>🛋️ 소파와 한 몸이 된 남편을 7일 안에 <b>스�
 <p>🍺 회식 날엔 남편이 술 취해 들어와요. 🍯 꿀물, 🖐️ 등짝 스매싱, 🧦 양말 벗기기로 술을 깨우고 소파에 재우면 다음 날 반성 모드! 그냥 두면 숙취로 고생해요.</p>
 <p>💑 <b>부부 같이 하기</b>를 고르면 링크를 남편에게 보내요. 남편이 자기 폰으로 들어와서 부탁을 받거나 거절하고, 직접 걸어가서 집안일을 해요.</p>
 <p>팁: <b>칭찬 2번 → 같이 하자 → 시키기</b></p>`;
+const HELP2 = `<p>🍺 매일 저녁 6시부터 자정까지, 남편의 <b>술 생각</b>이 100이 되지 않게 지켜요. 버티면 금주 달력에 ✅ 도장!</p>
+<p>📞 부장님 전화, 친구 단톡, 야구 중계 같은 <b>유혹</b>이 오면 9초 안에 거절 멘트를 골라 줘요. 늦으면 남편이 알아서 대답하는데… 보통 망해요.</p>
+<p>🥤 탄산수, 🫙 술 숨기기, 🚶 같이 산책, 💪 홈트로 술 생각을 낮추고, 💬 칭찬으로 <b>참을성</b>을 키우면 술 생각이 천천히 올라요. 📢 잔소리는 스트레스라 오히려 술 생각이 올라요.</p>
+<p>🌙 를 일찍 누르면 남은 시간 동안 올라갈 술 생각까지 계산해요. 100을 넘으면 밤에 몰래 편의점행…</p>
+<p>🏪 못 참고 마시면 취해서 돌아와요. 꿀물·양말 벗기기로 재우면 다음 날 반성해서 참을성이 올라요.</p>`;
+function helpText() { return EP === 'drink' ? HELP2 : HELP; }
 let chosenPers = 'lazy';
 function openStart(err) {
   netClosing = true; if (ws) { try { ws.close(); } catch {} } ws = null; roomCode = null; peerOn = false; netClosing = false;
   if (JOIN && !err) {
     showCard(`<div class="em">💌</div><h2>아내가 초대했어요</h2><p>방 <b>${JOIN}</b>에 <b>남편</b>으로 들어가요. 아내가 부탁하면 받거나 거절하고, 직접 걸어가서 집안일을 해요. 스스로 하면 보너스!</p><button class="primary" data-a="join">🙋‍♂️ 남편으로 들어가기</button><button class="ghost" data-a="solo">그냥 혼자 하기</button>`,
-      { join: () => joinAsHusband(), solo: () => { history.replaceState(null, '', location.pathname); JOIN = ''; pickPers('solo'); } });
+      { join: () => { EP = 'sofa'; joinAsHusband(); }, solo: () => { history.replaceState(null, '', location.pathname); JOIN = ''; openStart(); } });
     return;
   }
-  showCard(`<div class="em">🛋️</div><h2>남편 개조 프로젝트</h2>${err ? `<p style="color:#ffb0a0">${err}</p>` : ''}<p>소파와 한 몸이 된 남편을 7일 안에 집안일 하는 남자로!</p>
-    <button class="primary" data-a="solo">🙋‍♀️ 혼자 하기</button><button class="ghost" data-a="wife">💑 부부 같이 하기 (남편 초대)</button>
+  const got = store.get('endings', []);
+  const eps = Object.entries(EPISODES).map(([k, e]) => { const n = ENDINGS.filter(x => (x.ep || 'sofa') === k && got.includes(x.id)).length, tot = ENDINGS.filter(x => (x.ep || 'sofa') === k).length;
+    return `<button class="pick ep" data-a="ep_${k}" ${e.locked ? 'disabled' : ''}><div class="i">${e.icon}</div><div><b>${e.no}화 · ${e.name}</b><small>${e.locked ? '🔒 공개 예정' : `${e.desc} · 엔딩 ${n}/${tot}`}</small></div></button>`; }).join('');
+  const acts = { book: openBook, decor: () => openDecor(true), help: () => showCard(`<div class="em">❓</div><h2>하는 법</h2>${helpText()}<button class="primary" data-a="back">알겠어요</button>`, { back: () => openStart() }) };
+  Object.keys(EPISODES).forEach(k => acts['ep_' + k] = () => openEpisode(k));
+  showCard(`<div class="em">🛋️</div><h2>남편 개조 시리즈</h2>${err ? `<p style="color:#ffb0a0">${err}</p>` : ''}<p>오늘은 어떤 남편을 개조할까요?</p><div class="eps">${eps}</div>
     <div class="grid2"><button class="ghost" data-a="book" style="margin:0">📖 엔딩 도감</button><button class="ghost" data-a="decor" style="margin:0">🎨 꾸미기</button></div>
-    <button class="ghost" data-a="help">❓ 하는 법</button><a href="/" style="display:block;margin-top:12px;color:var(--dim);font-size:13px">🔥 모닥불 캠핑장으로 놀러 가기</a>`,
-    { solo: () => pickPers('solo'), wife: () => pickPers('wife'), book: openBook, decor: () => openDecor(true), help: () => showCard(`<div class="em">❓</div><h2>하는 법</h2>${HELP}<button class="primary" data-a="back">알겠어요</button>`, { back: () => openStart() }) });
+    <button class="ghost" data-a="help">❓ 하는 법</button><a href="/" style="display:block;margin-top:12px;color:var(--dim);font-size:13px">🔥 모닥불 캠핑장으로 놀러 가기</a>`, acts);
+}
+function openEpisode(k) {
+  const e = EPISODES[k]; if (!e || e.locked) return; EP = k;
+  showCard(`<div class="em">${e.icon}</div><h2>${e.no}화 · ${e.name}</h2><p>${e.long}</p>
+    <button class="primary" data-a="solo">🙋‍♀️ 혼자 하기</button>${k === 'sofa' ? '<button class="ghost" data-a="wife">💑 부부 같이 하기 (남편 초대)</button>' : '<p style="text-align:center;font-size:13px">💑 부부 같이 하기는 1화에서 할 수 있어요</p>'}
+    <button class="ghost" data-a="help">❓ 하는 법</button><button class="ghost" data-a="back">뒤로</button>`,
+    { solo: () => pickPers('solo'), wife: () => pickPers('wife'), help: () => showCard(`<div class="em">❓</div><h2>하는 법</h2>${helpText()}<button class="primary" data-a="back">알겠어요</button>`, { back: () => openEpisode(k) }), back: () => openStart() });
 }
 function pickPers(role) {
   const html = Object.entries(PERS).map(([k, p]) => `<button class="pick${k === chosenPers ? ' sel' : ''}" data-a="p_${k}"><div class="i">${p.icon}</div><b>${p.name}</b><small>${p.desc}</small></button>`).join('');
-  const acts = { go: () => startAs(role), back: () => openStart() };
+  const acts = { go: () => startAs(role), back: () => openEpisode(EP) };
   Object.keys(PERS).forEach(k => acts['p_' + k] = b => { chosenPers = k; $('modalCard').querySelectorAll('.pick').forEach(x => x.classList.toggle('sel', x === b)); });
   showCard(`<div class="em">🧑</div><h2>어떤 남편인가요?</h2><div class="grid2">${html}</div><button class="primary" data-a="go">${role === 'wife' ? '방 만들기' : '시작하기'}</button><button class="ghost" data-a="back">뒤로</button>`, acts);
 }
@@ -1216,7 +1393,8 @@ async function shareLink(link) {
 async function copyText(t, btn) { try { await navigator.clipboard.writeText(t); toast('링크를 복사했어요. 카톡에 붙여 넣어요'); if (btn) btn.textContent = '복사했어요 ✓'; } catch { toast('복사가 안 돼요. 링크를 길게 눌러 복사해요', 3500); } }
 function openBook() {
   const got = store.get('endings', []);
-  const cells = ENDINGS.map(e => { const ok = got.includes(e.id); return `<div class="end${ok ? '' : ' lock'}"><div class="i">${ok ? e.icon : '❔'}</div><b>${ok ? e.name : '???'}</b><small>${e.hint}</small></div>`; }).join('');
+  const cell = e => { const ok = got.includes(e.id); return `<div class="end${ok ? '' : ' lock'}"><div class="i">${ok ? e.icon : '❔'}</div><b>${ok ? e.name : '???'}</b><small>${e.hint}</small></div>`; };
+  const cells = Object.entries(EPISODES).filter(([, e]) => !e.locked).map(([k, e]) => `<div style="grid-column:1/-1;text-align:left;font-weight:900;margin-top:6px">${e.icon} ${e.no}화 · ${e.name}</div>` + ENDINGS.filter(x => (x.ep || 'sofa') === k).map(cell).join('')).join('');
   showCard(`<div class="em">📖</div><h2>엔딩 도감 ${got.length}/${ENDINGS.length}</h2><p>엔딩을 모으면 🎨 꾸미기 아이템이 열려요.</p><div class="grid2" style="grid-template-columns:1fr 1fr 1fr">${cells}</div><button class="primary" data-a="close">닫기</button>`,
     { close: () => { if (!S || (S.over && ROLE !== 'husband')) openStart(); else closeCard(); } });
 }
@@ -1240,11 +1418,11 @@ async function shareResult(title) {
   const sr = src.width / src.height, dr = W0 / H0; let sw = src.width, sh = src.height, sx = 0, sy = 0; if (sr > dr) { sw = sh * dr; sx = (src.width - sw) / 2; } else { sh = sw / dr; sy = (src.height - sh) / 2; }
   g.drawImage(src, sx, sy, sw, sh, 0, 0, W0, H0);
   const gr = g.createLinearGradient(0, H0 * 0.45, 0, H0); gr.addColorStop(0, 'rgba(8,9,14,0)'); gr.addColorStop(1, 'rgba(8,9,14,.92)'); g.fillStyle = gr; g.fillRect(0, 0, W0, H0);
-  g.fillStyle = 'rgba(8,9,14,.75)'; g.fillRect(0, 0, W0, 92); g.fillStyle = '#fff'; g.font = '34px "Gowun Dodum", sans-serif'; g.textAlign = 'left'; g.fillText('🛋️ 남편 개조 프로젝트', 30, 58);
+  g.fillStyle = 'rgba(8,9,14,.75)'; g.fillRect(0, 0, W0, 92); g.fillStyle = '#fff'; g.font = '34px "Gowun Dodum", sans-serif'; g.textAlign = 'left'; g.fillText(EP === 'drink' ? '🍺 술고래 남편 개조' : '🛋️ 남편 개조 프로젝트', 30, 58);
   g.textAlign = 'center'; g.font = '30px "Gowun Dodum", sans-serif'; g.fillStyle = '#e9c46a'; g.fillText(title || (S ? `${S.day}일차 진행 중` : ''), W0 / 2, H0 - 210);
-  g.fillStyle = '#fff'; g.font = '84px "Gowun Dodum", sans-serif'; g.fillText(`개조율 ${S ? S.hab : 0}%`, W0 / 2, H0 - 115);
+  g.fillStyle = '#fff'; g.font = '84px "Gowun Dodum", sans-serif'; g.fillText(EP === 'drink' && S ? `금주 ${S.cal.filter(Boolean).length}/7일` : `개조율 ${S ? S.hab : 0}%`, W0 / 2, H0 - 115);
   g.font = '24px "Gowun Dodum", sans-serif'; g.fillStyle = '#9aa3bd'; g.fillText(`${S ? PERS[S.pers].name : ''} · ${location.host}/house`, W0 / 2, H0 - 55);
-  const url = `${location.origin}/house/`, text = `우리 남편 개조율 ${S ? S.hab : 0}%! ${title || ''} 🛋️ 너희 남편도 개조해 봐`;
+  const url = `${location.origin}/house/`, text = EP === 'drink' && S ? `우리 남편 금주 ${S.cal.filter(Boolean).length}/7일! ${title || ''} 🍺 너희 남편도 개조해 봐` : `우리 남편 개조율 ${S ? S.hab : 0}%! ${title || ''} 🛋️ 너희 남편도 개조해 봐`;
   const blob = await new Promise(r => c.toBlob(r, 'image/png'));
   try { const file = new File([blob], 'husband.png', { type: 'image/png' }); if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], text: text + ' ' + url }); return; } } catch (e) { if (e && e.name === 'AbortError') return; }
   const dataUrl = c.toDataURL('image/png');
@@ -1275,7 +1453,7 @@ function soundIcon() { $('soundIco').innerHTML = muted ? SND_OFF : SND_ON; }
 soundIcon();
 $('soundBtn').onclick = () => { muted = !muted; store.set('muted', muted); soundIcon(); if (!muted) sfx('tap', true); };
 $('shareBtn').onclick = () => shareResult(S && S.over ? null : null);
-$('helpBtn').onclick = () => showCard(`<div class="em">❓</div><h2>하는 법</h2>${HELP}<button class="primary" data-a="close">계속하기</button>`, { close: closeCard });
+$('helpBtn').onclick = () => showCard(`<div class="em">❓</div><h2>하는 법</h2>${helpText()}<button class="primary" data-a="close">계속하기</button>`, { close: closeCard });
 $('decorBtn').onclick = () => openDecor(false);
 $('bookBtn').onclick = openBook;
 $('menuBtn').onclick = e => { e.stopPropagation(); $('menu').classList.toggle('show'); };
@@ -1343,6 +1521,7 @@ function loop() {
   if (S) { idleFace(H); if (ROLE !== 'husband') idleFace(W); }
   if (ROLE !== 'husband') drunkTick(dt, t);
   giftTick(dt);
+  drinkTick(dt);
   for (let i = parts.length - 1; i >= 0; i--) { const s = parts[i], u = s.userData; u.life -= dt; u.v.y -= dt * 1.5; s.position.addScaledVector(u.v, dt); s.material.opacity = Math.max(0, u.life); if (u.life <= 0) { scene.remove(s); s.material.dispose(); parts.splice(i, 1); } }
   stink.forEach(s => { const k = (t * 0.45 + s.userData.ph) % 1.6; s.position.set(6.45 + Math.sin(t * 2 + s.userData.ph) * 0.15 + s.userData.ph * 0.05, 0.75 + k, 5.4); s.material.opacity = 0.55 * (1 - k / 1.6); });
   if (ring.visible) { ring.material.opacity -= dt * 1.2; ring.scale.multiplyScalar(1 + dt * 0.8); if (ring.material.opacity <= 0) ring.visible = false; }
