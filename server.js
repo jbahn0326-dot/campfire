@@ -191,6 +191,7 @@ const dist = (a, b) => Math.hypot(a.x - b.x, a.z - b.z);
 server.on('upgrade', (req, socket) => {
   const url = (req.url || '').split('?')[0];
   const key = req.headers['sec-websocket-key'];
+  if (url === '/house-ws' && key && (req.headers.upgrade || '').toLowerCase() === 'websocket') return houseUpgrade(socket, key);
   if (url !== '/ws' || !key || (req.headers.upgrade || '').toLowerCase() !== 'websocket') { socket.destroy(); return; }
   if (clients.size >= MAX_CLIENTS) { socket.end('HTTP/1.1 503 Service Unavailable\r\n\r\n'); return; }
   const accept = crypto.createHash('sha1').update(key + GUID).digest('base64');
@@ -291,5 +292,59 @@ server.on('upgrade', (req, socket) => {
 // 끊긴 연결 정리 + 불 세기 주기적 동기화
 setInterval(() => { for (const [, c] of clients) { if (!c.conn.alive) { c.conn._end(); continue; } c.conn.alive = false; c.conn.ping(); } }, 30000);
 setInterval(() => { if (clients.size) broadcast({ type: 'fire', v: fireNow() }); }, 5000);
+
+// ---------------- 남편 개조 프로젝트: 부부 방 ----------------
+// 아내가 방을 만들고 링크로 남편을 불러요. 서버는 같은 방의 두 사람 사이에서 메시지를 전해 주기만 해요.
+const houseRooms = new Map();          // 방 코드 -> { wife: Conn|null, husband: Conn|null }
+const houseConns = new Set();
+const HOUSE_MAX_ROOMS = 1000;
+const ROOM_CHARS = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+function newRoomCode() {
+  for (let k = 0; k < 50; k++) { let c = ''; for (let i = 0; i < 4; i++) c += ROOM_CHARS[crypto.randomInt(ROOM_CHARS.length)]; if (!houseRooms.has(c)) return c; }
+  return null;
+}
+function houseUpgrade(socket, key) {
+  if (houseConns.size >= MAX_CLIENTS * 2) { socket.end('HTTP/1.1 503 Service Unavailable\r\n\r\n'); return; }
+  const accept = crypto.createHash('sha1').update(key + GUID).digest('base64');
+  socket.write('HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n' + `Sec-WebSocket-Accept: ${accept}\r\n\r\n`);
+  const conn = new Conn(socket); houseConns.add(conn);
+  let room = null, role = null, code = null, tokens = 40, last = Date.now();
+  const other = () => room && room[role === 'wife' ? 'husband' : 'wife'];
+  conn.onmessage = raw => {
+    const n = Date.now(); tokens = Math.min(40, tokens + (n - last) / 50); last = n;   // 초당 20개
+    if (tokens < 1) return; tokens -= 1;
+    let m; try { m = JSON.parse(raw); } catch { return; }
+    if (!m || typeof m !== 'object') return;
+    if (m.type === 'join' && !room) {
+      const r = m.role === 'husband' ? 'husband' : m.role === 'wife' ? 'wife' : null; if (!r) return;
+      let c = typeof m.code === 'string' ? m.code.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4) : '';
+      if (!c) {
+        if (r !== 'wife') return conn.send({ type: 'error', msg: '방 코드가 없어요' });
+        if (houseRooms.size >= HOUSE_MAX_ROOMS) return conn.send({ type: 'error', msg: '지금 방이 너무 많아요. 잠시 후 다시 해요' });
+        c = newRoomCode(); if (!c) return;
+      }
+      let rm = houseRooms.get(c);
+      if (!rm) {
+        if (r !== 'wife') return conn.send({ type: 'error', msg: '방을 찾을 수 없어요. 아내에게 새 링크를 받아 주세요' });
+        if (houseRooms.size >= HOUSE_MAX_ROOMS) return conn.send({ type: 'error', msg: '지금 방이 너무 많아요. 잠시 후 다시 해요' });
+        rm = { wife: null, husband: null }; houseRooms.set(c, rm);
+      }
+      if (rm[r] && !rm[r].closed) return conn.send({ type: 'error', msg: r === 'husband' ? '이미 남편이 들어와 있어요' : '이미 아내가 들어와 있어요' });
+      rm[r] = conn; room = rm; role = r; code = c;
+      const o = other();
+      conn.send({ type: 'joined', code: c, role: r, peer: !!(o && !o.closed) });
+      if (o && !o.closed) o.send({ type: 'peer-join' });
+    } else if (m.type === 'msg' && room && m.d && typeof m.d === 'object') {
+      const o = other(); if (o && !o.closed) o.send({ type: 'msg', d: m.d });
+    }
+  };
+  conn.onclose = () => {
+    houseConns.delete(conn); if (!room) return;
+    if (room[role] === conn) room[role] = null;
+    const o = other(); if (o && !o.closed) o.send({ type: 'peer-leave' });
+    if (!room.wife && !room.husband) houseRooms.delete(code);
+  };
+}
+setInterval(() => { for (const c of houseConns) { if (!c.alive) { c._end(); continue; } c.alive = false; c.ping(); } }, 30000);
 
 server.listen(PORT, () => console.log(`🔥 모닥불 캠핑장이 열렸어요: http://localhost:${PORT}`));

@@ -1,0 +1,1036 @@
+// 남편 개조 프로젝트 — 3D 집안일 게임 (혼자 / 부부 같이)
+import * as THREE from 'three';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+// =====================================================================
+// 기본 도구
+// =====================================================================
+const $ = id => document.getElementById(id);
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const lerp = (a, b, t) => a + (b - a) * t;
+const rand = (a = 0, b = 1) => a + Math.random() * (b - a);
+const pick = a => a[Math.floor(Math.random() * a.length)];
+const isTouch = matchMedia('(pointer:coarse)').matches;
+const store = {
+  get(k, d) { try { const v = localStorage.getItem('house.' + k); return v == null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem('house.' + k, JSON.stringify(v)); } catch {} }
+};
+const params = new URLSearchParams(location.search);
+let JOIN = (params.get('room') || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 4);
+let ROLE = 'solo';          // solo | wife | husband
+let peerOn = false;
+
+// =====================================================================
+// 렌더러 · 빛
+// =====================================================================
+const canvas = $('scene');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', preserveDrawingBuffer: true });
+const PR = () => Math.min(devicePixelRatio || 1, isTouch ? 1.5 : 2);
+renderer.setPixelRatio(PR());
+renderer.toneMapping = THREE.ACESFilmicToneMapping; renderer.toneMappingExposure = 1.15;
+renderer.shadowMap.enabled = true; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+const scene = new THREE.Scene(); scene.background = new THREE.Color(0x0b0d14);
+scene.fog = new THREE.FogExp2(0x0b0d14, 0.02);
+const camera = new THREE.PerspectiveCamera(42, 1, 0.1, 200);
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(256, 256), 0.5, 0.45, 0.86); composer.addPass(bloom);
+composer.addPass(new OutputPass());
+function resize() {
+  const w = innerWidth, h = innerHeight;
+  renderer.setPixelRatio(PR()); renderer.setSize(w, h, false); composer.setPixelRatio(PR()); composer.setSize(w, h);
+  bloom.resolution.set(w / 2, h / 2); camera.aspect = w / h; camera.updateProjectionMatrix();
+}
+addEventListener('resize', resize); resize();
+
+scene.add(new THREE.HemisphereLight(0x7a88c0, 0x2a1d14, 1.15));
+const ceil = new THREE.DirectionalLight(0xffd8b0, 1.15); ceil.position.set(3, 14, 6); ceil.castShadow = true; ceil.shadow.mapSize.set(2048, 2048);
+Object.assign(ceil.shadow.camera, { left: -11, right: 11, top: 11, bottom: -11, near: 1, far: 40 }); ceil.shadow.bias = -0.0006; ceil.shadow.normalBias = 0.02; scene.add(ceil);
+const lampL = new THREE.PointLight(0xffa860, 14, 11, 1.6); lampL.position.set(-6.3, 2.1, 2.5); scene.add(lampL);
+const pendL = new THREE.PointLight(0xffc68a, 12, 10, 1.6); pendL.position.set(3, 2.3, -2.2); scene.add(pendL);
+const tvL = new THREE.PointLight(0x6aa8ff, 5, 8, 1.6); tvL.position.set(-4, 1.3, -4.6); scene.add(tvL);
+const bathL = new THREE.PointLight(0xcfe6ff, 5, 7, 1.7); bathL.position.set(5.8, 2.4, 4.8); scene.add(bathL);
+const roomL = new THREE.PointLight(0xffb878, 10, 24, 1.3); roomL.position.set(0, 4.5, 0); scene.add(roomL);
+
+// =====================================================================
+// 텍스처 · 재질
+// =====================================================================
+function cTex(w, h, draw, rep) {
+  const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; if (rep) t.repeat.set(...rep); t.anisotropy = 4; return t;
+}
+const woodTex = cTex(256, 256, (g, w, h) => { const cols = ['#b07b4f', '#a8724a', '#b88457', '#a06b43']; for (let i = 0; i < 8; i++) { g.fillStyle = cols[i % 4]; g.fillRect(0, i * 32, w, 32); g.fillStyle = 'rgba(60,35,20,.35)'; g.fillRect(0, i * 32, w, 2); g.fillRect((i * 97) % 256, i * 32, 2, 32); } for (let k = 0; k < 200; k++) { g.fillStyle = `rgba(80,45,25,${Math.random() * 0.08})`; g.fillRect(Math.random() * w, Math.random() * h, Math.random() * 40, 1); } }, [4, 3]);
+const tileTex = cTex(128, 128, (g, w, h) => { g.fillStyle = '#e8e2d6'; g.fillRect(0, 0, w, h); g.fillStyle = '#d8cfbf'; g.fillRect(0, 0, 64, 64); g.fillRect(64, 64, 64, 64); g.fillStyle = 'rgba(0,0,0,.12)'; g.fillRect(0, 0, w, 2); g.fillRect(0, 0, 2, h); g.fillRect(0, 63, w, 2); g.fillRect(63, 0, 2, h); }, [4, 3]);
+const bathTex = cTex(64, 64, (g, w, h) => { g.fillStyle = '#bcdde4'; g.fillRect(0, 0, w, h); g.fillStyle = 'rgba(255,255,255,.5)'; g.fillRect(0, 0, w, 2); g.fillRect(0, 0, 2, h); }, [8, 5]);
+function wallTexOf(c1, c2) { return cTex(128, 128, (g, w, h) => { for (let i = 0; i < 8; i++) { g.fillStyle = i % 2 ? c2 : c1; g.fillRect(i * 16, 0, 16, h); } }, [10, 2]); }
+const rugTex = cTex(128, 128, (g, w, h) => { g.fillStyle = '#b9504a'; g.fillRect(0, 0, w, h); g.globalAlpha = 0.55; g.fillStyle = '#e9a26a'; for (let i = 0; i < 8; i++) { g.fillRect(i * 16, 0, 8, h); g.fillRect(0, i * 16, w, 8); } }, [2, 1.5]);
+const nightTex = cTex(128, 96, (g, w, h) => {
+  const gr = g.createLinearGradient(0, 0, 0, h); gr.addColorStop(0, '#040814'); gr.addColorStop(1, '#1d2a4c'); g.fillStyle = gr; g.fillRect(0, 0, w, h);
+  for (let i = 0; i < 40; i++) { g.fillStyle = `rgba(255,255,255,${Math.random() * 0.8 + 0.2})`; g.fillRect(Math.random() * w, Math.random() * h * 0.7, 1, 1); }
+  g.fillStyle = '#fff6d8'; g.beginPath(); g.arc(96, 24, 9, 0, 7); g.fill();
+  for (let i = 0; i < 9; i++) { const bh = 20 + Math.random() * 40; g.fillStyle = '#0a1020'; g.fillRect(i * 15, h - bh, 13, bh); g.fillStyle = '#ffd27a'; for (let k = 0; k < 8; k++) if (Math.random() < 0.5) g.fillRect(i * 15 + 2 + (k % 3) * 4, h - bh + 4 + Math.floor(k / 3) * 7, 2, 3); }
+});
+const MC = new Map(); const mat = (c, o = {}) => { const k = c + JSON.stringify(o); if (!MC.has(k)) MC.set(k, new THREE.MeshLambertMaterial({ color: c, ...o })); return MC.get(k); };
+const glow = c => new THREE.MeshBasicMaterial({ color: c });
+const SOFT = cTex(64, 64, g => { const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.35, 'rgba(255,255,255,.5)'); gr.addColorStop(1, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); });
+
+function M(geo, m, x, y, z, p) { const o = new THREE.Mesh(geo, m); o.position.set(x, y, z); o.castShadow = o.receiveShadow = true; (p || scene).add(o); return o; }
+const box = (w, h, d, c, x, y, z, p) => M(new THREE.BoxGeometry(w, h, d), typeof c === 'object' ? c : mat(c), x, y, z, p);
+const cyl = (a, b, h, c, x, y, z, p, s = 16) => M(new THREE.CylinderGeometry(a, b, h, s), typeof c === 'object' ? c : mat(c), x, y, z, p);
+const sph = (r, c, x, y, z, p) => M(new THREE.SphereGeometry(r, 14, 10), typeof c === 'object' ? c : mat(c), x, y, z, p);
+const clickables = [], floors = [];
+function G(action) { const g = new THREE.Group(); g.userData.action = action; scene.add(g); clickables.push(g); return g; }
+function floorPlane(w, d, m, x, z, y = 0) { const o = new THREE.Mesh(new THREE.PlaneGeometry(w, d), m); o.rotation.x = -Math.PI / 2; o.position.set(x, y, z); o.receiveShadow = true; scene.add(o); floors.push(o); return o; }
+
+// =====================================================================
+// 꾸미기 설정
+// =====================================================================
+const DECOR = {
+  sofa: [[0x4a6aa8, '네이비'], [0x6f9a7a, '세이지'], [0xd9849a, '핑크'], [0xd9a23a, '머스터드']],
+  wall: [['#e9d7c0', '#e3cfb6', '베이지'], ['#cfe6dc', '#c2ddd1', '민트'], ['#f3d3dc', '#ebc4cf', '핑크'], ['#3a4260', '#333a56', '밤하늘']],
+  pj: [[0xb8bcc4, '회색 티'], [0x3f5fa8, '파란 츄리닝'], [0xc0463a, '빨간 티'], [0x3a6a4a, '군복 티']]
+};
+const UNLOCK = [0, 1, 3, 5];   // 엔딩을 몇 개 모으면 열리는지
+let decor = store.get('decor', { sofa: 0, wall: 0, pj: 0 });
+
+// =====================================================================
+// 집
+// =====================================================================
+floorPlane(16, 12, new THREE.MeshLambertMaterial({ map: woodTex }), 0, 0);
+floorPlane(8, 6, new THREE.MeshLambertMaterial({ map: tileTex }), 4, -3, 0.01);
+floorPlane(4, 2.5, new THREE.MeshLambertMaterial({ map: bathTex }), 6, 4.75, 0.012);
+floorPlane(3.6, 2.6, new THREE.MeshLambertMaterial({ map: rugTex }), -4, -0.6, 0.02);
+floorPlane(2.4, 1.2, mat(0x6a5a4a), 0, 5.4, 0.015);           // 현관 매트
+{ const o = new THREE.Mesh(new THREE.PlaneGeometry(120, 120), mat(0x0b0d14)); o.rotation.x = -Math.PI / 2; o.position.y = -0.05; scene.add(o); }
+const wallM = new THREE.MeshLambertMaterial({ map: wallTexOf(DECOR.wall[0][0], DECOR.wall[0][1]) });
+box(16.4, 3.2, 0.3, wallM, 0, 1.6, -6.15); box(0.3, 3.2, 12.3, wallM, -8.15, 1.6, 0);
+box(16.4, 0.12, 0.32, 0x8a6040, 0, 0.06, -5.98); box(0.32, 0.12, 12.3, 0x8a6040, -7.98, 0.06, 0);
+box(16.6, 0.35, 0.3, 0x3a2e26, 0, 0.17, 6.15); box(0.3, 0.35, 12.5, 0x3a2e26, 8.15, 0.17, 0);
+function windowAt(x, y, z, ry, w, h) {
+  const g = new THREE.Group(); g.position.set(x, y, z); g.rotation.y = ry; scene.add(g);
+  const gl = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: nightTex })); gl.position.z = 0.02; g.add(gl);
+  const fm = mat(0xf4ece0); box(w + 0.16, 0.08, 0.1, fm, 0, h / 2, 0.04, g); box(w + 0.16, 0.08, 0.1, fm, 0, -h / 2, 0.04, g); box(0.08, h, 0.1, fm, -w / 2, 0, 0.04, g); box(0.08, h, 0.1, fm, w / 2, 0, 0.04, g); box(0.05, h, 0.06, fm, 0, 0, 0.05, g); box(w + 0.3, 0.06, 0.22, fm, 0, -h / 2 - 0.05, 0.1, g);
+  const cur = mat(0xc9a3c8); box(0.35, h + 0.3, 0.06, cur, -w / 2 - 0.25, 0, 0.1, g); box(0.35, h + 0.3, 0.06, cur, w / 2 + 0.25, 0, 0.1, g);
+}
+windowAt(-7.99, 1.75, -2.6, Math.PI / 2, 2.2, 1.3); windowAt(4, 2.05, -5.99, 0, 1.6, 0.95); windowAt(-1.2, 1.85, -5.99, 0, 1.4, 1.1);
+[[-6.5, 2.05, 0xffd166, 0x3f5fa8], [-5.6, 1.85, 0xf2b4bf, 0x5a8a6a]].forEach(([x, y, c, b]) => { box(0.7, 0.85, 0.06, 0x6a4a32, x, y, -5.98); box(0.56, 0.7, 0.03, c, x, y, -5.94); sph(0.12, b, x, y - 0.05, -5.92); });
+const bulbs = [];
+function bulbLine(pts, off) {
+  scene.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints(pts), new THREE.LineBasicMaterial({ color: 0x3a2e2a })));
+  pts.forEach((p, i) => { if (i % 2) return; const b = new THREE.Mesh(new THREE.SphereGeometry(0.05, 8, 6), glow([0xffd27a, 0xffe7b0, 0xffb46a][i % 3])); b.position.copy(p).add(off); scene.add(b); bulbs.push(b); });
+}
+{ const a = [], b = []; for (let i = 0; i <= 26; i++) a.push(new THREE.Vector3(-7.8 + i * 0.6, 2.8 - Math.sin(i / 26 * Math.PI * 4) * 0.14, -5.92)); for (let i = 0; i <= 18; i++) b.push(new THREE.Vector3(-7.92, 2.8 - Math.sin(i / 18 * Math.PI * 3) * 0.14, -5.8 + i * 0.6));
+  bulbLine(a, new THREE.Vector3(0, -0.07, 0.02)); bulbLine(b, new THREE.Vector3(0.02, -0.07, 0)); }
+
+// --- 거실 ---
+const couch = G('husband');
+const sofaMat = new THREE.MeshLambertMaterial({ color: DECOR.sofa[0][0] }), sofa2Mat = new THREE.MeshLambertMaterial({ color: DECOR.sofa[0][0] });
+box(3.2, 0.42, 1.15, sofaMat, -4, 0.33, 1.62, couch); box(3.2, 0.55, 0.3, sofa2Mat, -4, 0.6, 2.2, couch); box(0.32, 0.7, 1.2, sofa2Mat, -5.62, 0.5, 1.62, couch); box(0.32, 0.7, 1.2, sofa2Mat, -2.38, 0.5, 1.62, couch);
+box(1.45, 0.14, 1, sofaMat, -4.75, 0.6, 1.55, couch); box(1.45, 0.14, 1, sofaMat, -3.25, 0.6, 1.55, couch);
+[[-5.7, 1.1], [-2.3, 1.1], [-5.7, 2.25], [-2.3, 2.25]].forEach(([x, z]) => cyl(0.04, 0.03, 0.12, 0x2a2018, x, 0.06, z, couch, 6));
+box(0.45, 0.36, 0.14, 0xe6b34a, -5.15, 0.82, 2.0, couch).rotation.z = 0.15;
+box(0.5, 0.18, 0.4, 0xf6efe4, -4.95, 0.75, 1.55, couch);   // 베개
+cyl(0.03, 0.03, 1.9, 0x2a2018, -6.3, 0.95, 2.5); cyl(0.22, 0.22, 0.04, 0x2a2018, -6.3, 0.02, 2.5);
+cyl(0.22, 0.36, 0.38, new THREE.MeshLambertMaterial({ color: 0xfff0d0, emissive: 0xffa860, emissiveIntensity: 0.8 }), -6.3, 2.0, 2.5).castShadow = false;
+box(1.8, 0.08, 0.9, 0x7a5236, -4, 0.44, -0.6); [[-0.8, -0.35], [0.8, -0.35], [-0.8, 0.35], [0.8, 0.35]].forEach(([a, b]) => box(0.07, 0.4, 0.07, 0x5a3a26, -4 + a, 0.2, -0.6 + b));
+box(0.3, 0.05, 0.2, 0xe2793a, -4.5, 0.5, -0.5); cyl(0.06, 0.05, 0.14, 0xf6f1ee, -4.2, 0.55, -0.75);
+const remote = box(0.1, 0.04, 0.36, 0x22222a, -3.5, 0.5, -0.55);
+cyl(0.06, 0.06, 0.12, 0xfbf6ec, -3.8, 0.54, -0.85); const flame = new THREE.Mesh(new THREE.SphereGeometry(0.03, 8, 6), glow(0xffc070)); flame.scale.y = 1.8; flame.position.set(-3.8, 0.65, -0.85); scene.add(flame);
+const chickenBox = new THREE.Group(); scene.add(chickenBox); box(0.6, 0.28, 0.5, 0xffb347, -4.15, 0.62, -0.65, chickenBox); box(0.62, 0.04, 0.52, 0xd9402f, -4.15, 0.78, -0.65, chickenBox); chickenBox.visible = false;
+const tv = G('tv');
+box(2.9, 0.5, 0.55, 0x5a3a26, -4, 0.25, -5.6, tv); box(2.4, 1.35, 0.1, 0x15151b, -4, 1.32, -5.7, tv);
+const screenMat = new THREE.MeshBasicMaterial({ color: 0x5a8cff }); const screen = new THREE.Mesh(new THREE.PlaneGeometry(2.24, 1.2), screenMat); screen.position.set(-4, 1.32, -5.64); tv.add(screen);
+// 화분 (물 주기)
+const plantG = G('plant');
+cyl(0.2, 0.25, 0.4, 0xd9895b, -6.6, 0.2, -5.4, plantG);
+const plantOk = new THREE.Group(); plantG.add(plantOk); sph(0.42, 0x3f7f4f, -6.6, 0.8, -5.4, plantOk); sph(0.3, 0x4f9a5f, -6.4, 1.1, -5.3, plantOk);
+const plantSad = new THREE.Group(); plantG.add(plantSad); { const a = sph(0.38, 0x8a7a3a, -6.6, 0.7, -5.4, plantSad); a.scale.set(1.2, 0.7, 1.2); sph(0.18, 0x7a6a2a, -6.3, 0.55, -5.2, plantSad); }
+box(0.5, 1.9, 1.6, 0x6a4a32, -7.72, 0.95, 0.6); [0.35, 0.95, 1.55].forEach(y => { for (let k = 0; k < 4; k++) box(0.3, 0.42, 0.25, pick([0xc0463a, 0x3f5fa8, 0xe6b34a, 0x5a8a6a, 0x8a5a9e]), -7.58, y + 0.2, 0.08 + k * 0.34); });
+
+// --- 주방 ---
+const sink = G('dish');
+box(5, 0.88, 0.7, 0xe9e4da, 4.4, 0.44, -5.6, sink); box(5.1, 0.07, 0.78, 0x6a4a32, 4.4, 0.91, -5.6, sink);
+box(1, 0.03, 0.5, 0x7d8790, 4, 0.95, -5.6, sink); cyl(0.03, 0.03, 0.38, 0xbfc6cf, 4, 1.13, -5.88, sink, 8);
+for (let i = 0; i < 4; i++) box(0.04, 0.12, 0.04, 0x8a6040, 2.4 + i * 1.2, 0.7, -5.24, sink);
+box(1.4, 0.7, 0.42, 0x7fa88f, 2.4, 2.35, -5.8, sink); box(1.2, 0.7, 0.42, 0x7fa88f, 5.9, 2.35, -5.8, sink);
+const fridge = G('fridge'); box(1.1, 2.1, 0.8, 0xdfe6ec, 7.35, 1.05, -5.5, fridge); box(0.05, 0.5, 0.05, 0x8a949d, 6.85, 1.4, -5.08, fridge); box(0.05, 0.3, 0.05, 0x8a949d, 6.85, 0.55, -5.08, fridge); box(1.12, 0.02, 0.82, 0xb9c2ca, 7.35, 0.9, -5.5, fridge);
+[0xff7a8a, 0xffd166, 0x7fb3ff].forEach((c, i) => box(0.12, 0.12, 0.02, c, 7.1 + i * 0.18, 1.65, -5.09, fridge));
+box(2, 0.08, 1.2, 0x8b6a45, 3, 0.76, -2.2); [[-0.85, -0.5], [0.85, -0.5], [-0.85, 0.5], [0.85, 0.5]].forEach(([a, b]) => box(0.07, 0.72, 0.07, 0x5a3a26, 3 + a, 0.36, -2.2 + b));
+[[2.4, -1.35, 0], [3.6, -1.35, 0], [2.4, -3.05, Math.PI], [3.6, -3.05, Math.PI]].forEach(([x, z, r]) => { const g = new THREE.Group(); g.position.set(x, 0, z); g.rotation.y = r; scene.add(g); box(0.48, 0.06, 0.48, 0xe0743c, 0, 0.46, 0, g); box(0.48, 0.5, 0.06, 0xe0743c, 0, 0.72, 0.22, g); [[-0.2, -0.2], [0.2, -0.2], [-0.2, 0.2], [0.2, 0.2]].forEach(([a, b]) => box(0.05, 0.44, 0.05, 0x5a3a26, a, 0.22, b, g)); });
+cyl(0.005, 0.005, 1, 0x222222, 3, 2.65, -2.2, null, 4); cyl(0.03, 0.03, 0.06, 0x2a2a2e, 3, 2.15, -2.2, null, 8);
+{ const b = new THREE.Mesh(new THREE.SphereGeometry(0.1, 10, 8), glow(0xffe0a8)); b.position.set(3, 2.03, -2.2); scene.add(b); }
+cyl(0.16, 0.12, 0.22, 0xf2ece4, 3, 0.91, -2.2); sph(0.1, 0xd94040, 2.95, 1.05, -2.2); sph(0.1, 0xe6b34a, 3.08, 1.04, -2.15);
+
+// --- 세탁 · 욕실 · 분리수거 · 청소기 ---
+const washer = G('laundry');
+box(1, 1, 0.95, 0xf2f2f0, 7.4, 0.5, 1.5, washer); box(1.02, 0.18, 0.97, 0xdcdcda, 7.4, 0.92, 1.5, washer);
+{ const d = cyl(0.32, 0.32, 0.05, 0x2d3a4a, 6.88, 0.5, 1.5, washer, 20); d.rotation.z = Math.PI / 2; const r = cyl(0.36, 0.36, 0.03, 0xc9ced4, 6.9, 0.5, 1.5, washer, 20); r.rotation.z = Math.PI / 2; }
+cyl(0.4, 0.32, 0.5, 0xc9935a, 7.4, 0.25, 2.9, washer, 12);
+const bath = G('bath');
+box(0.62, 0.42, 0.72, 0xf6f6f4, 6.6, 0.21, 5.45, bath); box(0.78, 0.62, 0.26, 0xf6f6f4, 6.6, 0.72, 5.86, bath); cyl(0.32, 0.32, 0.06, 0xe8e8e6, 6.6, 0.45, 5.4, bath, 18);
+box(1.9, 0.6, 1, 0xf6f6f4, 4.9, 0.3, 5.4, bath); box(1.6, 0.04, 0.72, 0x7fc6dc, 4.9, 0.57, 5.4, bath);
+box(0.8, 0.02, 0.5, 0xf2b4bf, 6.6, 0.025, 4.55, bath); box(0.6, 0.9, 0.45, 0xf6f6f4, 7.55, 0.45, 4.1, bath);
+box(0.12, 1.1, 1.2, 0xe9d7c0, 3.95, 0.55, 5.4);
+const bins = G('trash');
+[0x3f8fd0, 0xe6b34a, 0x5aa86a].forEach((c, i) => { box(0.62, 0.82, 0.58, c, -7.42, 0.41, 3.4 + i * 0.78, bins); box(0.66, 0.06, 0.62, c, -7.42, 0.85, 3.4 + i * 0.78, bins); });
+const vac = G('vacuum');
+cyl(0.03, 0.03, 1.3, 0xff8fab, -0.2, 0.75, -5.75, vac, 6).rotation.x = 0.15; box(0.5, 0.12, 0.25, 0xd9586f, -0.2, 0.07, -5.65, vac); cyl(0.1, 0.1, 0.34, 0xffd1dc, -0.2, 0.95, -5.68, vac, 10);
+// 현관 신발장
+box(1.2, 0.8, 0.4, 0x7a5a3e, 2.9, 0.4, 5.75);
+
+// =====================================================================
+// 어질러진 것들
+// =====================================================================
+const mess = {};
+mess.dish = new THREE.Group(); sink.add(mess.dish);
+for (let i = 0; i < 7; i++) cyl(0.21, 0.17, 0.035, i % 2 ? 0xf6f6f4 : 0xeae0cf, 4.6 + (i > 3 ? 0.55 : 0), 0.98 + (i % 4) * 0.045, -5.55, mess.dish);
+sph(0.06, 0x8a5226, 4.65, 1.18, -5.5, mess.dish); cyl(0.07, 0.06, 0.17, 0xe6b34a, 5.3, 1.03, -5.45, mess.dish); cyl(0.05, 0.05, 0.2, 0x5aa86a, 3.3, 1.04, -5.5, mess.dish);
+mess.laundry = new THREE.Group(); washer.add(mess.laundry);
+[0xf2b4bf, 0x7fb3ff, 0xe6b34a, 0x5aa86a, 0xb47ae8, 0xf6f6f4, 0xc0463a].forEach((c, i) => sph(0.16, c, 7.25 + (i % 3) * 0.15, 0.52 + Math.floor(i / 3) * 0.13, 2.85 + (i % 2) * 0.12, mess.laundry));
+box(0.25, 0.03, 0.12, 0x7fb3ff, 6.2, 0.02, 2.2, mess.laundry).rotation.y = 0.6; box(0.5, 0.03, 0.4, 0x8a5a9e, -1.8, 0.02, 2.6, mess.laundry).rotation.y = 0.3;
+mess.bath = new THREE.Group(); scene.add(mess.bath); const stink = [];
+for (let i = 0; i < 5; i++) { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: SOFT, color: 0x9bd36a, transparent: true, opacity: 0.6, depthWrite: false })); s.scale.set(0.3, 0.3, 0.3); s.userData.ph = i * 1.1; mess.bath.add(s); stink.push(s); }
+[[5.6, 4.25], [6.2, 4.9], [7.1, 4.3], [4.6, 4.4]].forEach(([x, z]) => { const m = new THREE.Mesh(new THREE.CircleGeometry(0.16, 14), mat(0xa89270)); m.rotation.x = -Math.PI / 2; m.position.set(x, 0.03, z); mess.bath.add(m); });
+mess.trash = new THREE.Group(); bins.add(mess.trash);
+[[-6.8, 3.25], [-6.6, 4.05], [-6.85, 4.85], [-6.55, 5.45], [-7, 2.7]].forEach(([x, z], i) => box(0.4, 0.28, 0.34, 0xb88a5a, x, 0.14, z, mess.trash).rotation.y = i * 0.7);
+[[-6.35, 3.65], [-6.3, 4.6], [-7.1, 5.65]].forEach(([x, z]) => cyl(0.07, 0.07, 0.3, 0x6fbf8f, x, 0.07, z, mess.trash, 8).rotation.z = Math.PI / 2);
+const DUST = [[-1, 0.6], [-1.8, -3.3], [-5.9, -3.1], [-6.6, -0.3], [-2.6, 3.7], [0.6, -1]];
+mess.vacuum = G('vacuum'); const dusts = DUST.map(([x, z]) => { const d = new THREE.Mesh(new THREE.IcosahedronGeometry(0.16, 1), new THREE.MeshLambertMaterial({ color: 0x9a928a, flatShading: true })); d.position.set(x, 0.13, z); d.castShadow = true; mess.vacuum.add(d); return d; });
+mess.plant = plantSad; plantSad.visible = false;
+mess.parcel = G('parcel'); [[-1.6, 5.3, 0.6, 0.45], [-1.0, 5.4, 0.5, 0.35], [-1.35, 5.3, 0.4, 0.3]].forEach(([x, z, s, h], i) => { const b = box(s, h, s * 0.8, i === 1 ? 0xc79c6e : 0xb88a5a, x, h / 2 + (i === 2 ? 0.45 : 0), z, mess.parcel); b.rotation.y = i * 0.4; box(s * 0.2, h + 0.01, s * 0.81, 0xe9e0c8, x, h / 2 + (i === 2 ? 0.45 : 0), z, mess.parcel).rotation.y = i * 0.4; });
+mess.shoes = G('shoes'); [[0.8, 5.0, 0.4], [1.2, 5.5, -0.8], [1.7, 4.9, 1.9], [0.5, 5.6, 2.5], [2.0, 5.3, 0.2]].forEach(([x, z, r], i) => { const s = box(0.14, 0.1, 0.3, [0xffffff, 0x2a2a2a, 0xc0463a][i % 3], x, 0.05, z, mess.shoes); s.rotation.y = r; });
+
+// =====================================================================
+// 길찾기 (0.5m 격자 A*)
+// =====================================================================
+const CS = 0.5, GW = 32, GH = 24; const grid = new Uint8Array(GW * GH);
+const RECTS = [[-5.8, -2.2, 1, 2.4], [-4.95, -3.05, -1.1, -0.1], [-5.5, -2.5, -6, -5.3], [1.9, 6.9, -6, -5.2], [6.8, 8, -6, -5.05], [1.95, 4.05, -3.4, -1], [6.85, 8, 1, 2], [6.95, 7.85, 2.45, 3.35], [6.25, 6.95, 5.05, 6], [3.9, 5.9, 4.85, 6], [3.85, 4.05, 4.75, 6], [7.3, 8, 3.85, 4.4], [-8, -7.05, 3.05, 5.75], [-8, -7.4, -0.25, 1.45], [-6.9, -6.3, -5.7, -5.1], [-6.5, -6.1, 2.3, 2.7], [-0.5, 0.1, -6, -5.45], [2.3, 3.5, 5.5, 6]];
+const PAD = 0.22;
+for (let j = 0; j < GH; j++) for (let i = 0; i < GW; i++) { const x = -8 + (i + 0.5) * CS, z = -6 + (j + 0.5) * CS; let b = x < -7.7 || x > 7.7 || z < -5.75 || z > 5.8; for (const r of RECTS) if (x > r[0] - PAD && x < r[1] + PAD && z > r[2] - PAD && z < r[3] + PAD) b = true; grid[j * GW + i] = b ? 1 : 0; }
+const ci = x => Math.floor((x + 8) / CS), cj = z => Math.floor((z + 6) / CS);
+const blocked = (x, z) => { const i = ci(x), j = cj(z); return i < 0 || j < 0 || i >= GW || j >= GH || grid[j * GW + i] === 1; };
+function nearestFree(x, z) { if (!blocked(x, z)) return [x, z]; for (let r = 1; r < 12; r++) for (let k = 0; k < 12 * r; k++) { const a = k / (12 * r) * 6.283, nx = x + Math.cos(a) * r * 0.3, nz = z + Math.sin(a) * r * 0.3; if (!blocked(nx, nz)) return [nx, nz]; } return [x, z]; }
+function lineFree(ax, az, bx, bz) { const d = Math.hypot(bx - ax, bz - az), n = Math.ceil(d / 0.2); for (let k = 1; k <= n; k++) { const t = k / n; if (blocked(lerp(ax, bx, t), lerp(az, bz, t))) return false; } return true; }
+function findPath(sx, sz, tx, tz) {
+  [tx, tz] = nearestFree(tx, tz); if (blocked(sx, sz)) [sx, sz] = nearestFree(sx, sz);
+  if (lineFree(sx, sz, tx, tz)) return [[tx, tz]];
+  const s = cj(sz) * GW + ci(sx), goal = cj(tz) * GW + ci(tx), N = GW * GH;
+  const gS = new Float32Array(N).fill(1e9), came = new Int32Array(N).fill(-1), closed = new Uint8Array(N), open = [[0, s]]; gS[s] = 0;
+  const h = n => Math.hypot(n % GW - goal % GW, ((n / GW) | 0) - ((goal / GW) | 0)); let found = false;
+  while (open.length) {
+    let bi = 0; for (let k = 1; k < open.length; k++) if (open[k][0] < open[bi][0]) bi = k; const [, cur] = open.splice(bi, 1)[0];
+    if (cur === goal) { found = true; break; } if (closed[cur]) continue; closed[cur] = 1; const x0 = cur % GW, y0 = (cur / GW) | 0;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      if (!dx && !dy) continue; const nx = x0 + dx, ny = y0 + dy; if (nx < 0 || ny < 0 || nx >= GW || ny >= GH) continue; const nb = ny * GW + nx; if (grid[nb]) continue;
+      if (dx && dy && (grid[y0 * GW + nx] || grid[ny * GW + x0])) continue; const g = gS[cur] + (dx && dy ? 1.414 : 1); if (g < gS[nb]) { gS[nb] = g; came[nb] = cur; open.push([g + h(nb), nb]); }
+    }
+  }
+  if (!found) return [[tx, tz]];
+  const pts = []; for (let n = goal; n !== -1 && n !== s; n = came[n]) pts.push([-8 + (n % GW + 0.5) * CS, -6 + (((n / GW) | 0) + 0.5) * CS]); pts.reverse(); if (!pts.length) return [[tx, tz]]; pts[pts.length - 1] = [tx, tz];
+  const out = []; let ax = sx, az = sz, k = 0; while (k < pts.length) { let far = k; for (let m = pts.length - 1; m > k; m--) if (lineFree(ax, az, pts[m][0], pts[m][1])) { far = m; break; } out.push(pts[far]); ax = pts[far][0]; az = pts[far][1]; k = far + 1; }
+  return out;
+}
+
+// =====================================================================
+// 사람 캐릭터 (머리 큰 2등신)
+// =====================================================================
+const PG = {
+  head: new THREE.SphereGeometry(0.36, 26, 20), eye: new THREE.SphereGeometry(0.042, 10, 8), shine: new THREE.SphereGeometry(0.013, 6, 4), brow: new THREE.BoxGeometry(0.1, 0.022, 0.02),
+  cheek: new THREE.SphereGeometry(0.05, 8, 6), ear: new THREE.SphereGeometry(0.07, 8, 6), nose: new THREE.SphereGeometry(0.025, 8, 6),
+  body: new THREE.CylinderGeometry(0.19, 0.24, 0.42, 16), hip: new THREE.CylinderGeometry(0.24, 0.23, 0.12, 16), leg: new THREE.CylinderGeometry(0.085, 0.08, 0.3, 10), shoe: new THREE.BoxGeometry(0.14, 0.08, 0.24),
+  sleeve: new THREE.CylinderGeometry(0.085, 0.075, 0.17, 10), arm: new THREE.CylinderGeometry(0.058, 0.055, 0.15, 8), hand: new THREE.SphereGeometry(0.068, 10, 8),
+  cap: new THREE.SphereGeometry(0.385, 26, 16, 0, Math.PI * 2, 0, Math.PI * 0.5), smile: new THREE.TorusGeometry(0.055, 0.013, 6, 14, Math.PI), mo: new THREE.SphereGeometry(0.04, 10, 8), flat: new THREE.BoxGeometry(0.08, 0.016, 0.02),
+  apron: new THREE.BoxGeometry(0.34, 0.46, 0.035), strap: new THREE.TorusGeometry(0.2, 0.012, 4, 16), band: new THREE.TorusGeometry(0.37, 0.035, 6, 26), cape: new THREE.PlaneGeometry(0.5, 0.72),
+  phone: new THREE.BoxGeometry(0.08, 0.15, 0.018), shadow: new THREE.CircleGeometry(0.42, 20)
+};
+const shadowMat = new THREE.MeshBasicMaterial({ map: cTex(64, 64, g => { const gr = g.createRadialGradient(32, 32, 0, 32, 32, 32); gr.addColorStop(0, 'rgba(0,0,0,.5)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64); }), transparent: true, depthWrite: false });
+const PM = { eye: mat(0x1c1410), shine: glow(0xffffff), cheek: mat(0xf2a69a), mouth: mat(0x5a2a22), glove: mat(0xffd23a), cape: new THREE.MeshLambertMaterial({ color: 0xd9402f, side: THREE.DoubleSide }), apron: mat(0xf6e6d6), band: mat(0xffffff), phone: mat(0x22252e), screen: glow(0x8ec5ff) };
+function camoTex(base) {
+  const c = new THREE.Color(base), d = c.clone().multiplyScalar(0.6), l = c.clone().lerp(new THREE.Color(0xd8c8a0), 0.35);
+  return cTex(64, 64, g => { g.fillStyle = '#' + c.getHexString(); g.fillRect(0, 0, 64, 64); for (let i = 0; i < 18; i++) { g.fillStyle = '#' + (i % 2 ? d : l).getHexString(); g.beginPath(); g.ellipse(Math.random() * 64, Math.random() * 64, 4 + Math.random() * 8, 3 + Math.random() * 5, Math.random() * 3, 0, 7); g.fill(); } });
+}
+function makePerson(o) {
+  const root = new THREE.Group(); scene.add(root);
+  const shadow = new THREE.Mesh(PG.shadow, shadowMat); shadow.rotation.x = -Math.PI / 2; shadow.position.y = 0.03; root.add(shadow);
+  const inner = new THREE.Group(); root.add(inner);
+  const skin = mat(o.skin), hair = mat(o.hair), pants = mat(o.pants), shoe = mat(o.shoe || 0xf4f4f0);
+  const shirt = new THREE.MeshLambertMaterial({ color: o.shirt });
+  const legs = [-0.1, 0.1].map(x => { const pv = new THREE.Group(); pv.position.set(x, 0.36, 0); const l = new THREE.Mesh(PG.leg, pants); l.position.y = -0.15; pv.add(l); const s = new THREE.Mesh(PG.shoe, shoe); s.position.set(0, -0.31, 0.03); pv.add(s); inner.add(pv); return pv; });
+  const hip = new THREE.Mesh(PG.hip, pants); hip.position.y = 0.4; inner.add(hip);
+  const body = new THREE.Mesh(PG.body, shirt); body.position.y = 0.66; inner.add(body);
+  const hands = [];
+  const arms = [-1, 1].map(s => { const pv = new THREE.Group(); pv.position.set(0.25 * s, 0.8, 0); const sl = new THREE.Mesh(PG.sleeve, shirt); sl.position.y = -0.07; pv.add(sl); const a = new THREE.Mesh(PG.arm, skin); a.position.y = -0.2; pv.add(a); const h = new THREE.Mesh(PG.hand, skin); h.position.y = -0.3; pv.add(h); hands.push(h); pv.rotation.z = 0.18 * s; inner.add(pv); return pv; });
+  const headG = new THREE.Group(); headG.position.y = 1.2; inner.add(headG);
+  headG.add(new THREE.Mesh(PG.head, skin));
+  [-1, 1].forEach(s => { const e = new THREE.Mesh(PG.ear, skin); e.position.set(0.35 * s, -0.02, 0); e.scale.set(0.6, 1, 0.8); headG.add(e); });
+  const cap = new THREE.Mesh(PG.cap, hair); cap.rotation.x = -0.32; cap.position.set(0, 0.02, -0.02); headG.add(cap);
+  const fringe = new THREE.Mesh(PG.head, hair); fringe.scale.set(0.95, 0.32, 0.55); fringe.position.set(o.part ? 0.06 : 0, 0.24, 0.17); fringe.rotation.z = o.part ? -0.25 : 0; headG.add(fringe);
+  if (o.style === 'long') { const back = new THREE.Mesh(PG.head, hair); back.scale.set(1.04, 1.25, 0.75); back.position.set(0, -0.12, -0.13); headG.add(back); [-1, 1].forEach(s => { const sd = new THREE.Mesh(PG.head, hair); sd.scale.set(0.3, 0.85, 0.42); sd.position.set(0.3 * s, -0.17, 0.02); headG.add(sd); }); }
+  if (o.style === 'bun') { const b = new THREE.Mesh(PG.head, hair); b.scale.setScalar(0.38); b.position.set(0, 0.36, -0.15); headG.add(b); }
+  if (o.style === 'spiky') { for (let k = 0; k < 5; k++) { const sp = new THREE.Mesh(new THREE.ConeGeometry(0.08, 0.2, 5), hair); sp.position.set(-0.2 + k * 0.1, 0.36, -0.02); sp.rotation.z = (k - 2) * -0.25; headG.add(sp); } }
+  const eyes = [-0.12, 0.12].map(x => { const e = new THREE.Mesh(PG.eye, PM.eye); e.position.set(x, 0.0, 0.33); e.scale.set(1, 1.35, 0.7); headG.add(e); const sh = new THREE.Mesh(PG.shine, PM.shine); sh.position.set(x + 0.014, 0.025, 0.37); headG.add(sh); return e; });
+  const brows = [-0.12, 0.12].map((x, i) => { const b = new THREE.Mesh(PG.brow, hair); b.position.set(x, 0.11, 0.335); headG.add(b); return b; });
+  [-0.2, 0.2].forEach(x => { const c = new THREE.Mesh(PG.cheek, PM.cheek); c.position.set(x, -0.09, 0.29); c.scale.set(1, 0.6, 0.4); headG.add(c); });
+  const nose = new THREE.Mesh(PG.nose, skin); nose.position.set(0, -0.05, 0.36); headG.add(nose);
+  const mouths = {
+    smile: (() => { const m = new THREE.Mesh(PG.smile, PM.mouth); m.rotation.z = Math.PI; m.position.set(0, -0.12, 0.34); return m; })(),
+    sad: (() => { const m = new THREE.Mesh(PG.smile, PM.mouth); m.position.set(0, -0.17, 0.335); return m; })(),
+    open: (() => { const m = new THREE.Mesh(PG.mo, PM.mouth); m.scale.set(1, 1.2, 0.4); m.position.set(0, -0.15, 0.335); return m; })(),
+    flat: (() => { const m = new THREE.Mesh(PG.flat, PM.mouth); m.position.set(0, -0.15, 0.345); return m; })()
+  };
+  for (const k in mouths) { mouths[k].visible = k === 'smile'; headG.add(mouths[k]); }
+  // 소품 · 옷
+  const phone = new THREE.Group(); { const p = new THREE.Mesh(PG.phone, PM.phone); phone.add(p); const sc = new THREE.Mesh(new THREE.PlaneGeometry(0.065, 0.12), PM.screen); sc.position.z = 0.011; phone.add(sc); }
+  phone.position.set(0, -0.36, 0.06); phone.rotation.x = -1.2; phone.visible = false; arms[1].add(phone);
+  const apron = new THREE.Mesh(PG.apron, PM.apron); apron.position.set(0, 0.6, 0.215); apron.rotation.x = -0.1; apron.visible = false; inner.add(apron);
+  const strap = new THREE.Mesh(PG.strap, PM.apron); strap.rotation.x = Math.PI / 2; strap.position.y = 0.6; strap.scale.set(1.1, 1.1, 1); strap.visible = false; inner.add(strap);
+  const band = new THREE.Mesh(PG.band, PM.band); band.rotation.x = Math.PI / 2 - 0.25; band.position.y = 0.12; band.visible = false; headG.add(band);
+  const cape = new THREE.Mesh(PG.cape, PM.cape); cape.position.set(0, 0.5, -0.24); cape.rotation.x = 0.18; cape.visible = false; inner.add(cape);
+  root.traverse(m => { if (m.isMesh && m !== shadow) m.castShadow = true; });
+  return { root, inner, legs, arms, hands, headG, eyes, brows, mouths, phone, apron, strap, band, cape, shadow, skin, shirt, pants,
+    phase: Math.random() * 6, path: [], speed: 2.8, moving: false, pose: 'idle', face: 'smile', onArrive: null, targetRy: null, gloves: false };
+}
+function setShirt(ch, color, camo) { if (camo) { ch.shirt.map = camoTex(color); ch.shirt.color.set(0xffffff); } else { ch.shirt.map = null; ch.shirt.color.set(color); } ch.shirt.needsUpdate = true; }
+function setGloves(ch, on) { if (ch.gloves === on) return; ch.gloves = on; ch.hands.forEach(h => h.material = on ? PM.glove : ch.skin); }
+function setFace(ch, f) { if (ch.face === f) return; ch.face = f; for (const k in ch.mouths) ch.mouths[k].visible = (k === (f === 'sleep' ? 'flat' : f === 'angry' ? 'flat' : f === 'shock' ? 'open' : f)); ch.brows.forEach((b, i) => { b.rotation.z = f === 'angry' ? (i ? 0.45 : -0.45) : f === 'sad' ? (i ? -0.35 : 0.35) : 0; b.position.y = f === 'shock' ? 0.14 : 0.11; }); }
+
+const W = makePerson({ skin: 0xfbe3d0, hair: 0x5a3422, style: 'long', part: true, shirt: 0xe7a0b4, pants: 0xe9dcc4, shoe: 0xffffff });
+W.speed = 3.4;
+const H = makePerson({ skin: 0xf6dcc4, hair: 0x4a3326, style: 'short', shirt: 0xb8bcc4, pants: 0x2f3a56, shoe: 0xf4f4f0 });
+H.speed = 2.5; H.root.userData.action = 'husband'; clickables.push(H.root);
+const COUCH_SIDE = [-1.75, 1.25];
+function lieDown() { H.state = 'couch'; H.path = []; H.onArrive = null; H.pose = 'lie'; H.root.position.set(-2.8, 0.86, 1.48); H.root.rotation.set(0, 0, 0); H.inner.rotation.set(0, 0, Math.PI / 2); H.shadow.visible = false; H.idleT = 2; }
+function standUp() { H.inner.rotation.set(0, 0, 0); H.root.position.set(COUCH_SIDE[0], 0, COUCH_SIDE[1]); H.shadow.visible = true; H.pose = 'idle'; H.phone.visible = false; }
+function walk(ch, x, z, cb) { const p = findPath(ch.root.position.x, ch.root.position.z, x, z); ch.path = p; ch.onArrive = cb || null; if (!p.length && cb) cb(); }
+function walkSeq(ch, pts, cb) { const go = k => { if (k >= pts.length) { cb && cb(); return; } walk(ch, pts[k][0], pts[k][1], () => { pts[k][2] && pts[k][2](); go(k + 1); }); }; go(0); }
+function stepChar(ch, dt) {
+  if (!ch.path.length) { ch.moving = false; return; }
+  const [x, z] = ch.path[0], p = ch.root.position, dx = x - p.x, dz = z - p.z, d = Math.hypot(dx, dz), s = ch.speed * dt; ch.moving = true;
+  let dr = Math.atan2(dx, dz) - ch.root.rotation.y; dr = Math.atan2(Math.sin(dr), Math.cos(dr)); ch.root.rotation.y += dr * Math.min(1, dt * 12);
+  if (d <= s) { p.x = x; p.z = z; ch.path.shift(); if (!ch.path.length) { ch.moving = false; const cb = ch.onArrive; ch.onArrive = null; cb && cb(); } } else { p.x += dx / d * s; p.z += dz / d * s; }
+}
+function faceTo(ch, x, z) { const p = ch.root.position; ch.targetRy = Math.atan2(x - p.x, z - p.z); }
+function animPerson(ch, dt, t) {
+  if (ch.targetRy != null && !ch.moving) { let dr = ch.targetRy - ch.root.rotation.y; dr = Math.atan2(Math.sin(dr), Math.cos(dr)); ch.root.rotation.y += dr * Math.min(1, dt * 8); if (Math.abs(dr) < 0.01) ch.targetRy = null; }
+  if (ch.moving) ch.phase += dt * 12; const sw = ch.moving ? Math.sin(ch.phase) : 0;
+  const blink = Math.sin(t * 0.9 + ch.phase) > 0.993;
+  if (ch.pose === 'lie') {
+    const sub = ch.sub || 'tv';
+    ch.legs.forEach((l, i) => l.rotation.x = Math.sin(t * 0.6 + i) * 0.06); ch.inner.position.y = Math.sin(t * 1.6) * 0.012;
+    ch.arms[0].rotation.set(sub === 'yawn' ? -2.9 : sub === 'scratch' ? -0.5 + Math.sin(t * 12) * 0.25 : 0, 0, -0.18);
+    ch.arms[1].rotation.set(sub === 'phone' ? -1.35 : sub === 'yawn' ? -2.9 : -0.25, 0, 0.18);
+    ch.phone.visible = sub === 'phone';
+    ch.headG.rotation.set(sub === 'phone' ? 0.25 : 0, 0, 0);
+    const sleepy = sub === 'snore';
+    ch.eyes.forEach(e => e.scale.y = sleepy || blink ? 0.15 : sub === 'yawn' ? 0.5 : 1.35);
+    return;
+  }
+  ch.phone.visible = ch.pose === 'phone';
+  ch.legs[0].rotation.x = sw * 0.75; ch.legs[1].rotation.x = -sw * 0.75;
+  ch.inner.position.y = (ch.moving ? Math.abs(Math.cos(ch.phase)) * 0.06 : 0) + Math.sin(t * 1.6 + ch.phase % 3) * 0.006; ch.inner.rotation.z = ch.moving ? Math.sin(ch.phase) * 0.04 : 0;
+  const A0 = ch.arms[0].rotation, A1 = ch.arms[1].rotation; A0.z = -0.18; A1.z = 0.18; ch.headG.rotation.set(0, 0, 0);
+  switch (ch.pose) {
+    case 'work': A0.x = -1.15 + Math.sin(t * 14) * 0.35; A1.x = -1.15 - Math.sin(t * 14) * 0.35; ch.headG.rotation.x = 0.3; ch.inner.position.y = Math.abs(Math.sin(t * 7)) * 0.03; break;
+    case 'cheer': A0.x = -2.8 + Math.sin(t * 14) * 0.2; A1.x = -2.8 - Math.sin(t * 14) * 0.2; A0.z = -0.35; A1.z = 0.35; ch.headG.rotation.x = -0.15; ch.inner.position.y = Math.abs(Math.sin(t * 8)) * 0.08; break;
+    case 'nag': A1.x = -1.7 + Math.sin(t * 16) * 0.35; A0.x = -0.2; A0.z = -0.9; ch.headG.rotation.x = -0.05; break;
+    case 'sigh': A0.x = -0.25; A1.x = -0.25; ch.headG.rotation.x = 0.45 + Math.sin(t * 2) * 0.05; break;
+    case 'heart': A0.x = -2.3; A1.x = -2.3; A0.z = 0.5; A1.z = -0.5; ch.headG.rotation.z = Math.sin(t * 4) * 0.12; break;
+    case 'phone': A1.x = -1.3; A0.x = 0; ch.headG.rotation.x = 0.35; break;
+    case 'wave': A1.x = -2.7 + Math.sin(t * 14) * 0.25; A1.z = 0.5; A0.x = 0; break;
+    case 'sneak': A0.x = -0.9; A1.x = -0.9; ch.inner.rotation.x = 0.25; ch.headG.rotation.y = Math.sin(t * 3) * 0.6; break;
+    default: A0.x = ch.moving ? -sw * 0.6 : 0; A1.x = ch.moving ? sw * 0.6 : 0;
+  }
+  if (ch.pose !== 'sneak') ch.inner.rotation.x = 0;
+  ch.eyes.forEach(e => e.scale.y = blink || ch.face === 'sleep' ? 0.15 : ch.face === 'shock' ? 1.6 : 1.35);
+}
+const poseT = {};
+function pose(ch, p, ms = 1800) { ch.pose = p; const k = ch === W ? 'w' : 'h'; clearTimeout(poseT[k]); poseT[k] = setTimeout(() => { if (ch.pose === p) ch.pose = 'idle'; }, ms); }
+let faceTimers = {};
+function emote(ch, f, ms = 2000) { setFace(ch, f); const k = ch === W ? 'w' : 'h'; clearTimeout(faceTimers[k]); ch.faceLock = performance.now() + ms; }
+
+// =====================================================================
+// 입자 · 소리
+// =====================================================================
+const parts = [];
+function burst(x, y, z, n, color, spd = 1.5, size = 0.18, fromNet) {
+  for (let i = 0; i < n; i++) { const s = new THREE.Sprite(new THREE.SpriteMaterial({ map: SOFT, color, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })); s.scale.setScalar(size); s.position.set(x, y, z); s.userData = { v: new THREE.Vector3(rand(-1, 1) * spd, rand(0.5, 1.5) * spd, rand(-1, 1) * spd), life: rand(0.6, 1.1) }; scene.add(s); parts.push(s); }
+  if (!fromNet) net({ k: 'fx', p: [x, y, z].map(v => Math.round(v * 100) / 100), n, c: color, s: spd, z: size });
+}
+const ring = new THREE.Mesh(new THREE.RingGeometry(0.28, 0.36, 24), new THREE.MeshBasicMaterial({ color: 0xffd9a8, transparent: true, opacity: 0.6, depthWrite: false })); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.04; ring.visible = false; scene.add(ring);
+
+let AC = null, muted = store.get('muted', false);
+function ac() { if (!AC) { try { AC = new (window.AudioContext || window.webkitAudioContext)(); } catch { return null; } } if (AC.state === 'suspended') AC.resume(); return AC; }
+function tone(f, dur, type = 'sine', vol = 0.12, when = 0, slide) {
+  const a = ac(); if (!a || muted) return; const t0 = a.currentTime + when, o = a.createOscillator(), g = a.createGain();
+  o.type = type; o.frequency.setValueAtTime(f, t0); if (slide) o.frequency.exponentialRampToValueAtTime(slide, t0 + dur);
+  g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(vol, t0 + 0.015); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  o.connect(g).connect(a.destination); o.start(t0); o.stop(t0 + dur + 0.05);
+}
+function noise(dur, vol = 0.06, freq = 1200, when = 0) {
+  const a = ac(); if (!a || muted) return; const t0 = a.currentTime + when, n = Math.floor(a.sampleRate * dur), buf = a.createBuffer(1, n, a.sampleRate), d = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = Math.random() * 2 - 1;
+  const src = a.createBufferSource(); src.buffer = buf; const f = a.createBiquadFilter(); f.type = 'bandpass'; f.frequency.value = freq; f.Q.value = 0.8; const g = a.createGain();
+  g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(vol, t0 + 0.04); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+  src.connect(f).connect(g).connect(a.destination); src.start(t0); src.stop(t0 + dur + 0.05);
+}
+const SFX = {
+  tap() { tone(700, 0.05, 'triangle', 0.06); },
+  praise() { [660, 880, 1320].forEach((f, i) => tone(f, 0.2, 'sine', 0.1, i * 0.08)); },
+  nag() { tone(190, 0.22, 'square', 0.05); tone(175, 0.22, 'square', 0.05, 0.13); },
+  sigh() { noise(0.7, 0.07, 500); },
+  ok() { [523, 659, 784, 1046].forEach((f, i) => tone(f, 0.22, 'triangle', 0.1, i * 0.09)); },
+  no() { tone(420, 0.35, 'sawtooth', 0.045, 0, 160); },
+  bell() { tone(880, 0.45, 'sine', 0.13); tone(660, 0.6, 'sine', 0.13, 0.35); },
+  water() { for (let i = 0; i < 7; i++) noise(0.09, 0.05, 2400 + Math.random() * 800, i * 0.11); },
+  vacuum() { noise(1.6, 0.045, 900); tone(140, 1.6, 'sawtooth', 0.015); },
+  scrub() { noise(0.12, 0.05, 1800); },
+  night() { [392, 494, 587].forEach(f => tone(f, 1.4, 'sine', 0.05)); },
+  heart() { tone(988, 0.12, 'sine', 0.09); tone(1318, 0.2, 'sine', 0.09, 0.1); },
+  win() { [523, 659, 784, 1046, 1318].forEach((f, i) => tone(f, 0.35, 'triangle', 0.1, i * 0.12)); },
+  door() { tone(330, 0.15, 'square', 0.04); tone(250, 0.2, 'square', 0.04, 0.12); }
+};
+function sfx(k, fromNet) { SFX[k] && SFX[k](); if (!fromNet) net({ k: 'sfx', s: k }); }
+addEventListener('pointerdown', () => ac(), { once: true });
+
+// =====================================================================
+// 머리 위 표시 · 말풍선
+// =====================================================================
+function makeTag(name, me) {
+  const el = document.createElement('div'); el.className = 'tag' + (me ? ' me' : '');
+  el.innerHTML = `<div class="bubble"></div>${me ? '' : '<div class="state"></div><div class="meter"><div class="bar"><b></b></div><span>0</span></div>'}<div class="name"><i></i><span></span></div>`;
+  $('labels').appendChild(el);
+  return { el, bubble: el.querySelector('.bubble'), state: el.querySelector('.state'), meter: el.querySelector('.meter'), bar: el.querySelector('.bar b'), num: el.querySelector('.meter span'), role: el.querySelector('.name i'), name: el.querySelector('.name span'), until: 0 };
+}
+const WL = makeTag('', false), HL = makeTag('', false);
+WL.state.remove(); WL.meter.remove(); WL.state = null; WL.meter = null;
+function setTags() {
+  WL.role.textContent = ROLE === 'husband' ? '아내' : '나'; WL.name.textContent = '아내';
+  HL.role.textContent = ROLE === 'husband' ? '나' : '남편'; HL.name.textContent = PERS[S ? S.pers : 'lazy'].short;
+  WL.el.classList.toggle('me', ROLE !== 'husband'); HL.el.classList.toggle('me', ROLE === 'husband');
+}
+function say(ch, text, emo = false, ms, fromNet) {
+  const L = ch === W ? WL : HL; L.bubble.textContent = text; L.bubble.classList.toggle('emo', emo); L.bubble.classList.add('show');
+  L.until = performance.now() + (ms || (emo ? 2200 : clamp(2200 + text.length * 90, 2800, 5200)));
+  if (!fromNet) net({ k: 'say', w: ch === W ? 'W' : 'H', t: text, e: emo ? 1 : 0 });
+}
+const _p = new THREE.Vector3(), _v = new THREE.Vector3();
+function placeTag(L, ch) {
+  ch.headG.getWorldPosition(_p); _p.y += (ch.pose === 'lie' ? 0.5 : 0.48); _p.project(camera);
+  if (_p.z > 1 || !ch.root.visible) { L.el.style.display = 'none'; return; } L.el.style.display = '';
+  const sx = (_p.x * 0.5 + 0.5) * innerWidth, sy = (-_p.y * 0.5 + 0.5) * innerHeight;
+  L.el.style.transform = `translate(${sx.toFixed(1)}px,${sy.toFixed(1)}px) translate(-50%,-100%)`;
+  if (L.until && performance.now() > L.until) { L.bubble.classList.remove('show'); L.until = 0; }
+}
+function floatAt(ch, text, color, fromNet) {
+  ch.headG.getWorldPosition(_p); _p.y += 0.5; _p.project(camera);
+  const d = document.createElement('div'); d.className = 'float'; d.textContent = text; d.style.color = color; d.style.left = ((_p.x * 0.5 + 0.5) * innerWidth) + 'px'; d.style.top = ((-_p.y * 0.5 + 0.5) * innerHeight - 70) + 'px';
+  document.body.appendChild(d); setTimeout(() => d.remove(), 1200);
+  if (!fromNet) net({ k: 'fl', w: ch === W ? 'W' : 'H', t: text, c: color });
+}
+let toT; function toast(m, ms = 2800) { const t = $('toast'); t.textContent = m; t.classList.add('show'); clearTimeout(toT); toT = setTimeout(() => t.classList.remove('show'), ms); }
+
+// =====================================================================
+// 게임 규칙
+// =====================================================================
+const AP_MAX = 6;
+const PERS = {
+  lazy: { icon: '😴', name: '게으른 남편', short: '게으른 남편', desc: '뭐든 보통이에요. 처음이라면 이 남편!', hair: 0x4a3326, style: 'short', m: {} },
+  sly: { icon: '🦊', name: '눈치 빠른 남편', short: '눈치백단 남편', desc: '칭찬에 약하지만 한숨 연기는 금방 들켜요', hair: 0x7a4a26, style: 'spiky', m: { praise: 1.3, caught: 0.6, nagRes: 1.2 } },
+  sulky: { icon: '😤', name: '잘 삐지는 남편', short: '삐돌이 남편', desc: '잔소리하면 크게 삐져요. 대신 치킨이면 끝!', hair: 0x1e1a1a, style: 'short', m: { nagRes: 2, chicken: 1.6, together: 1.3 } },
+  sweet: { icon: '🐶', name: '순한 남편', short: '순둥이 남편', desc: '뭐든 잘 들어줘요. 쉬움 모드', hair: 0x8a5a2a, style: 'short', m: { all: 1.2, resMult: 0.7 } }
+};
+const BASE = [
+  { id: 'trash', icon: '♻️', name: '분리수거', req: 20, gain: 8, spot: [-6.55, 4.3], look: [-7.4, 4.3], wife: [-6.2, 3.3], fx: 0xd8c8a0, snd: 'scrub' },
+  { id: 'dish', icon: '🍽️', name: '설거지', req: 30, gain: 10, spot: [4.2, -4.75], look: [4.2, -6], wife: [5.1, -4.7], fx: 0x8ecfff, snd: 'water' },
+  { id: 'laundry', icon: '👕', name: '빨래', req: 40, gain: 12, spot: [6.4, 1.6], look: [7.4, 1.6], wife: [6.4, 2.7], fx: 0xffffff, snd: 'scrub' },
+  { id: 'vacuum', icon: '🌀', name: '청소기', req: 50, gain: 15, spot: [-0.2, -4.85], look: [-0.2, -6], wife: [-3, -2.3], fx: 0xd8d0c8, snd: 'vacuum' },
+  { id: 'bath', icon: '🚽', name: '화장실 청소', req: 65, gain: 20, spot: [6.6, 4.55], look: [6.6, 6], wife: [5.2, 4.3], fx: 0x8ecfff, snd: 'water' }
+];
+const EXTRAS = [
+  { id: 'plant', icon: '🪴', name: '화분 물주기', req: 18, gain: 7, spot: [-6.05, -4.6], look: [-6.6, -5.4], wife: [-5.2, -4.2], fx: 0x8ecfff, snd: 'water', extra: true },
+  { id: 'parcel', icon: '📦', name: '택배 정리', req: 25, gain: 8, spot: [-1.3, 4.55], look: [-1.3, 5.4], wife: [-0.3, 4.4], fx: 0xd8c8a0, snd: 'scrub', extra: true },
+  { id: 'shoes', icon: '👟', name: '신발 정리', req: 15, gain: 6, spot: [1.3, 4.6], look: [1.3, 5.5], wife: [2.3, 4.4], fx: 0xffffff, snd: 'scrub', extra: true }
+];
+const ALL = Object.fromEntries(BASE.concat(EXTRAS).map(c => [c.id, c]));
+const todays = () => S ? BASE.concat(S.extra ? [ALL[S.extra]] : []) : BASE;
+const EVENTS = [
+  { t: '🌙 평범한 저녁. 남편이 소파와 한 몸이 됐어요.' },
+  { t: '⚽ 축구 중계날! 의욕이 절반만 올라요. 리모컨을 숨기면 풀려요', tv: true },
+  { t: '🎮 게임 업데이트 날… 시작 의욕 -10', f() { S.mot = clamp(S.mot - 10, 0, 100); } },
+  { t: '💸 월급날! 기분 최고, 시작 의욕 +20', f() { S.mot = clamp(S.mot + 20, 0, 100); } },
+  { t: '👵 시어머니 방문 예고! 오늘 화장실 청소가 쉬워져요', f() { S.mod.bath = -25; } },
+  { t: '🍺 어제 회식… 숙취로 행동력 -1', f() { S.ap--; } },
+  { t: '🌧️ 비 오는 밤. "이불 밖은 위험해" 시작 의욕 -8', f() { S.mot = clamp(S.mot - 8, 0, 100); } }
+];
+const ENDINGS = [
+  { id: 'legend', icon: '🦸', name: '전설의 남편', hint: '개조율 100%' },
+  { id: 'speed', icon: '⚡', name: '초고속 개조', hint: '5일 안에 100%' },
+  { id: 'couple', icon: '💑', name: '우리는 한 팀', hint: '부부 같이 하기로 100%' },
+  { id: 'almost', icon: '😎', name: '거의 개조됨', hint: '7일 뒤 70% 이상' },
+  { id: 'half', icon: '🙂', name: '반쯤 개조됨', hint: '7일 뒤 40% 이상' },
+  { id: 'sofa', icon: '🛋️', name: '소파 일체형', hint: '7일 뒤 40% 미만' },
+  { id: 'runaway', icon: '🏃', name: 'PC방 가출', hint: '반발심 100' },
+  { id: 'chicken', icon: '🍗', name: '치킨으로 키운 남편', hint: '치킨 5번 이상 시키고 끝내기' },
+  { id: 'self', icon: '🙋', name: '스스로 하는 남자', hint: '부부 모드에서 남편이 스스로 3번' }
+];
+let S = null;
+function reqOf(c) { let r = c.req - (S.habit[c.id] || 0) * 10 + (S.mod[c.id] || 0); if (S.together) r -= 25; return clamp(r, 5, 100); }
+function pm(k, d = 1) { const m = PERS[S.pers].m; return (m[k] ?? d) * (m.all && (k === 'praise' || k === 'nag' || k === 'sigh' || k === 'chicken' || k === 'together') ? m.all : 1); }
+
+function newGame(pers) {
+  S = { day: 1, ap: AP_MAX, mot: 15, res: 5, hab: 0, used: {}, habit: {}, mod: {}, done: {}, tvOff: false, together: false, tv: false, over: false, busy: false, pers, extra: null, chickens: 0, selfCount: 0, pending: null, accepted: null, stage: 0, ending: null };
+  applyPers(); H.root.visible = true; setGloves(H, false); updateOutfit(true); startDay(true);
+}
+function applyPers() { const P = PERS[S.pers]; H.headG.children.forEach(m => { if (m.material === undefined) return; }); hairColor(H, P.hair); setTags(); }
+function hairColor(ch, c) { ch.headG.traverse(m => { if (m.isMesh && m.material && m.material.color && m.material.userData.hair) m.material.color.set(c); }); }
+function startDay(first) {
+  Object.assign(S, { ap: AP_MAX, used: {}, mod: {}, done: {}, tvOff: false, together: false, tv: false, busy: false, pending: null, accepted: null });
+  if (!first) S.mot = Math.round(S.mot * 0.3) + 12;
+  const e = first ? EVENTS[0] : pick(EVENTS); if (e.tv) S.tv = true; if (e.f) e.f();
+  S.extra = first ? null : pick(EXTRAS).id;
+  for (const k in mess) mess[k].visible = BASE.some(c => c.id === k) || k === S.extra; dusts.forEach(d => d.visible = true);
+  chickenBox.visible = false; remote.visible = true;
+  if (H.state !== 'remote') lieDown();
+  W.path = []; W.onArrive = null; W.pose = 'idle'; W.root.position.set(0, 0, 2.6); W.root.rotation.y = Math.PI;
+  toast(e.t + (S.extra ? `\n⭐ 오늘의 특별 집안일: ${ALL[S.extra].icon} ${ALL[S.extra].name}` : ''), 5000);
+  net({ k: 'toast', t: e.t });
+  setTimeout(() => { if (H.state === 'couch') say(H, pick(['…리모컨 어딨지', '오늘은 좀 쉬자~', '(쇼츠 무한 스크롤 중)', '배고프다 뭐 먹지'])); }, 900);
+  closePanel(); render(); syncNow();
+}
+function mot(v) { if (v > 0) { if (S.tv && !S.tvOff) v *= 0.5; if (S.res >= 70) v *= 0.5; } v = Math.round(v); S.mot = clamp(S.mot + v, 0, 100); if (v) floatAt(H, (v > 0 ? '+' : '') + v + ' 의욕', v > 0 ? '#8fe3b8' : '#ff8a7a'); }
+function res(v) { if (v > 0) v = Math.round(v * pm('resMult')); S.res = clamp(S.res + v, 0, 100); if (v >= 8) setTimeout(() => floatAt(H, '+' + v + ' 반발심', '#ff8a7a'), 250); }
+const remoteH = () => H.state === 'remote';
+function canAct() {
+  if (!S || S.over || ROLE === 'husband') return false;
+  if (S.busy) { toast('남편이 집안일 하는 중이에요. 끝날 때까지 기다려요'); return false; }
+  if (H.state === 'sneaking' || H.state === 'returning' || H.state === 'working') { toast('남편이 어디론가 가고 있어요…'); return false; }
+  if (S.ap <= 0) { toast('행동력이 없어요. 🌙 버튼으로 하루를 마쳐요'); return false; }
+  return true;
+}
+function hSay(t, emo) { if (!remoteH()) say(H, t, emo); }
+function hFace(f, ms) { if (!remoteH()) emote(H, f, ms); }
+// 남편 옆으로 가서 실행 (숨어 있으면 먼저 찾기)
+function goHusband(fn) {
+  closePanel();
+  if (H.state === 'hiding') { findHusband(); return false; }
+  if (remoteH() || H.state !== 'couch') { const p = H.root.position; const a = Math.atan2(W.root.position.x - p.x, W.root.position.z - p.z); walk(W, p.x + Math.sin(a) * 1.1, p.z + Math.cos(a) * 1.1, () => { faceTo(W, H.root.position.x, H.root.position.z); fn && fn(); }); return true; }
+  walk(W, -2.9, 0.35, () => { faceTo(W, -4, 1.5); fn && fn(); }); return true;
+}
+const TACTICS = {
+  praise: { icon: '💬', name: '칭찬', run() {
+    const g = 22 * Math.pow(0.7, S.used.praise || 0) * pm('praise'); say(W, pick(['여보 오늘 왜 이렇게 멋있어?', '역시 우리 남편밖에 없다~', '어깨 진짜 넓다…', '우리 남편 최고!'])); pose(W, 'heart'); emote(W, 'smile'); sfx('praise');
+    setTimeout(() => { mot(g); res(-5); hSay(pick(['에이~ 내가 좀 하지 ㅎㅎ', '진짜? 나 그 정도야?', '😊'])); hFace('smile'); const p = H.headG.getWorldPosition(_v); burst(p.x, p.y + 0.3, p.z, 6, 0xff8ab0, 0.6, 0.25); }, 600); } },
+  nag: { icon: '📢', name: '잔소리', run() {
+    say(W, pick(['또 누워 있어?!', '내가 몇 번을 말해!!', '소파랑 결혼했어?'])); pose(W, 'nag'); emote(W, 'angry'); sfx('nag');
+    setTimeout(() => { mot(22 * pm('nag')); res(18 * pm('nagRes')); hSay(pick(['아 알았어 알았어!!', '지금 하려고 했거든?', '(한숨)'])); hFace('angry', 2500); maybeSneak(); }, 600); } },
+  sigh: { icon: '😮‍💨', name: '한숨', run() {
+    say(W, '하아… 허리야… (힐끔)'); pose(W, 'sigh', 2200); emote(W, 'sad', 2200); sfx('sigh');
+    setTimeout(() => { if (!remoteH() && Math.random() < pm('caught', 0.25)) { res(10); say(H, '…방금 그거 연기지?'); emote(H, 'flat'); maybeSneak(); } else { mot(16 * pm('sigh')); res(3); hSay('(흠칫) 왜… 많이 힘들어?'); hFace('shock'); } }, 900); } },
+  together: { icon: '🤝', name: '같이 하자', run() {
+    say(W, '우리 같이 할래? 나도 도와줄게'); pose(W, 'cheer'); sfx('heart');
+    setTimeout(() => { S.together = true; mot(6 * pm('together')); res(-6); hSay('같이? …그럼 할 만하지'); hFace('smile'); toast('다음 집안일이 25만큼 쉬워져요'); }, 600); } }
+};
+function useTactic(k) { if (!canAct()) return; if (H.state === 'hiding') { findHusband(); return; } S.ap--; render(); goHusband(() => { TACTICS[k].run(); S.used[k] = (S.used[k] || 0) + 1; setTimeout(() => { render(); check(); syncNow(); }, 800); }); }
+function useChicken() {
+  if (!canAct()) return; if (S.used.chicken) { toast('치킨은 하루에 한 번만!'); return; } S.ap--; S.used.chicken = 1; S.chickens++; render(); closePanel();
+  walk(W, 6.95, -4.35, () => { faceTo(W, 7.35, -5.5); pose(W, 'phone', 1500); say(W, '여보~ 치킨 시켰어 🍗'); setTimeout(() => { sfx('bell'); chickenBox.visible = true; burst(-4.15, 0.9, -0.65, 10, 0xffc070, 0.8); mot(30 * pm('chicken')); res(-10); hSay('치킨…? 오늘 무슨 날이야?? 🥹'); hFace('shock'); render(); syncNow(); }, 1600); });
+}
+function useRemote() {
+  if (!canAct()) return; if (S.tvOff) { toast('리모컨은 이미 숨겼어요 🤫'); return; } S.ap--; render(); closePanel();
+  walk(W, -3.3, 0, () => { faceTo(W, -3.5, -0.55); remote.visible = false; say(W, '(리모컨을 조용히 숨긴다…)'); walk(W, -6, -4.6, () => { S.tvOff = true; render(); setTimeout(() => { mot(10); res(12); hSay('어?! 내 리모컨!! 😱'); hFace('shock', 2500); render(); check(); syncNow(); }, 300); }); });
+}
+// 몰래 도망 (반발심이 높을 때)
+function maybeSneak() {
+  if (remoteH() || H.state !== 'couch' || S.res < 60 || Math.random() > 0.35) return;
+  setTimeout(() => {
+    if (H.state !== 'couch' || S.over) return; standUp(); H.state = 'sneaking'; H.pose = 'sneak'; say(H, '(슬금슬금…)'); emote(H, 'flat', 4000);
+    walk(H, 5.4, 3.9, () => { H.state = 'hiding'; H.pose = 'phone'; faceTo(H, 7, 3.9); toast('🫣 남편이 화장실 쪽으로 숨었어요! 찾으러 가요'); render(); });
+  }, 1400);
+}
+function findHusband() {
+  const p = H.root.position; closePanel();
+  walk(W, p.x - 1, p.z - 0.4, () => {
+    faceTo(W, p.x, p.z); say(W, '여기 숨어 있었어?!'); pose(W, 'nag'); emote(W, 'shock'); faceTo(H, W.root.position.x, W.root.position.z);
+    setTimeout(() => { say(H, '들켰다… 😅'); emote(H, 'sad'); H.pose = 'idle'; res(-8); H.state = 'returning'; walk(H, COUCH_SIDE[0], COUCH_SIDE[1], () => { lieDown(); render(); }); render(); }, 900);
+  });
+}
+// 집안일 시키기
+function command(c) {
+  if (!canAct() || S.done[c.id]) return;
+  if (remoteH()) {   // 부부 모드: 진짜 남편에게 물어봐요
+    if (S.pending || S.accepted) { toast('남편이 이미 다른 부탁을 받고 있어요'); return; }
+    S.ap--; S.pending = c.id; render();
+    goHusband(() => { say(W, `여보~ ${c.name} 좀 해줄래?`); net({ k: 'req', c: c.id, r: reqOf(c), m: S.mot }); toast('남편 대답 기다리는 중… 🤔', 4000); syncNow(); });
+    return;
+  }
+  if (H.state === 'hiding') { findHusband(); return; }
+  if (H.state !== 'couch') { toast('남편이 아직 소파에 없어요'); return; }
+  S.ap--; render();
+  goHusband(() => {
+    const r = reqOf(c); say(W, `여보~ ${c.name} 좀 해줄래?`);
+    setTimeout(() => {
+      let ok = S.mot >= r, grudge = false;
+      if (!ok && S.mot >= r - 15 && Math.random() < 0.5) { ok = true; grudge = true; }
+      if (ok) {
+        S.mot = clamp(S.mot - Math.round(r * 0.5), 0, 100); S.done[c.id] = true; const tog = S.together; S.together = false;
+        say(H, grudge ? '(투덜투덜) …알았어, 한다 해' : pick(['그래 알았어!', '오케이 맡겨!', '(끄응) 일어난다 일어나'])); emote(H, grudge ? 'flat' : 'smile'); sfx('ok'); render();
+        setTimeout(() => sendHusband(c, tog), 900);
+      } else {
+        res(8); say(H, pick(['이따 할게~', '이거만 보고!', '내일 하면 안 돼?', '나 지금 바빠 (안 바쁨)'])); emote(H, 'flat'); sfx('no');
+        toast(`거절당했어요 · 의욕이 ${r - S.mot} 더 필요해요 (칭찬이 제일 잘 먹혀요)`, 3500); render(); maybeSneak(); check();
+      }
+      syncNow();
+    }, 900);
+  });
+}
+function sendHusband(c, tog) {
+  S.busy = true; standUp(); H.state = 'working'; setGloves(H, true); render();
+  const work = () => {
+    H.pose = 'work'; faceTo(H, c.look[0], c.look[1]); say(H, pick(['(열심)', '으쌰으쌰', '생각보다 할 만한데?'])); sfx(c.snd); let k = 0;
+    const iv = setInterval(() => { const p = H.root.position; burst(p.x + Math.sin(H.root.rotation.y) * 0.5, 0.9, p.z + Math.cos(H.root.rotation.y) * 0.5, 4, c.fx, 0.8, 0.14); if (c.snd === 'water' && k % 4 === 0) sfx('water'); if (++k >= 10) { clearInterval(iv); finishChore(c, false); } }, 250);
+  };
+  if (c.id === 'vacuum') { sfx('vacuum'); const order = [0, 5, 1, 2, 3, 4]; walkSeq(H, [[c.spot[0], c.spot[1]]].concat(order.map(i => [DUST[i][0], DUST[i][1] + 0.45, () => { dusts[i].visible = false; burst(DUST[i][0], 0.3, DUST[i][1], 8, 0xd8d0c8, 0.8); sfx('scrub'); }])), () => { H.pose = 'work'; setTimeout(() => finishChore(c, false), 600); }); }
+  else walk(H, c.spot[0], c.spot[1], work);
+  if (tog) walk(W, c.wife[0], c.wife[1], () => { faceTo(W, c.look[0], c.look[1]); W.pose = 'work'; say(W, '같이 하니까 금방이다!'); });
+}
+function finishChore(c, byRemote, bonus = 0) {
+  mess[c.id].visible = false; if (c.id === 'vacuum') dusts.forEach(d => d.visible = false);
+  const p = H.root.position; burst(p.x, 1, p.z, 26, 0xffe08a, 2, 0.22);
+  S.habit[c.id] = (S.habit[c.id] || 0) + 1; S.done[c.id] = true; const gain = c.gain + bonus; S.hab = clamp(S.hab + gain, 0, 100); res(-3); sfx('ok');
+  floatAt(H, `✨ 개조율 +${gain}%`, '#ffc08a'); toast(`${c.icon} ${c.name} 완료! 습관 ${S.habit[c.id]}회째 · 다음엔 더 쉬워져요`);
+  if (!byRemote) { H.pose = 'cheer'; setGloves(H, S.stage >= 2); say(H, pick(['다 했어! 칭찬해줘!!', '나 좀 멋있지 않아?', '(뿌듯)'])); emote(H, 'smile', 2500); }
+  if (W.pose === 'work') { W.pose = 'cheer'; setTimeout(() => { if (W.pose === 'cheer') W.pose = 'idle'; }, 1500); }
+  S.accepted = null; updateOutfit(); render(); syncNow();
+  if (byRemote) { check(); return; }
+  setTimeout(() => { if (check()) return; H.pose = 'idle'; H.state = 'returning'; walk(H, COUCH_SIDE[0], COUCH_SIDE[1], () => { lieDown(); S.busy = false; render(); syncNow(); if (peerOn && ROLE === 'wife') enableRemote(); }); }, 1500);
+}
+// 개조율에 따라 옷이 바뀌어요
+function updateOutfit(silent) {
+  const st = S.hab >= 90 ? 3 : S.hab >= 60 ? 2 : S.hab >= 30 ? 1 : 0;
+  H.apron.visible = H.strap.visible = st >= 1; H.band.visible = st >= 2; H.cape.visible = st >= 3; setGloves(H, st >= 2 || H.state === 'working');
+  if (st > S.stage && !silent) { const msg = ['', '🧑‍🍳 남편이 앞치마를 둘렀어요!', '🧤 남편이 고무장갑과 머리띠를 장착했어요!', '🦸 남편에게 히어로 망토가 생겼어요!'][st]; setTimeout(() => toast(msg, 3500), 1800); }
+  S.stage = st;
+}
+function check() {
+  if (!S || S.over) return true;
+  if (S.hab >= 100) {
+    const id = peerOn ? 'couple' : S.day <= 5 ? 'speed' : 'legend';
+    S.over = true; closePanel(); H.pose = 'cheer'; W.pose = 'heart'; burst(-1, 2, 0, 60, 0xffc0d0, 3, 0.3); sfx('win');
+    setTimeout(() => endGame(id, '🦸', '개조 완료!', `${S.day}일 만에 성공! 남편이 퇴근하자마자 고무장갑을 끼고 "오늘 화장실은 내가 할게"라고 말합니다.`), 1800); return true;
+  }
+  if (S.res >= 100) {
+    S.over = true; closePanel();
+    if (remoteH()) { endGame('runaway', '🏃‍♂️💨', '남편 PC방 가출', '반발심이 폭발했어요. 잔소리는 적당히… 칭찬과 "같이 하자"가 제일 잘 먹혀요.'); return true; }
+    if (H.state === 'couch') standUp(); H.state = 'leaving'; say(H, '나도 숨 좀 쉬자!!'); emote(H, 'angry', 5000); sfx('door');
+    walkSeq(H, [[0, 5.0], [0, 9]], () => { H.root.visible = false; endGame('runaway', '🏃‍♂️💨', '남편 PC방 가출', '반발심이 폭발했어요. 잔소리는 적당히… 칭찬과 "같이 하자"가 제일 잘 먹혀요.'); }); return true;
+  }
+  return false;
+}
+function endDay() {
+  if (!S || S.over || ROLE === 'husband') return; if (S.busy) { toast('남편이 일 끝나면 하루를 마칠 수 있어요'); return; }
+  closePanel(); const txt = S.day >= 7 ? '일주일이 지났어요…' : `${S.day}일차 끝 · 잘 자요 💤`; night(txt); net({ k: 'night', t: txt }); sfx('night');
+  setTimeout(() => { S.res = clamp(S.res - 15, 0, 100); if (S.day >= 7) finish(); else { S.day++; startDay(); } }, 1200);
+}
+function night(t) { $('night').textContent = t; $('night').classList.add('on'); setTimeout(() => $('night').classList.remove('on'), 1600); }
+function finish() {
+  S.over = true; const h = S.hab;
+  if (h >= 70) endGame('almost', '😎', '거의 개조됨', `개조율 ${h}%. 시키면 군말 없이 해요. 스스로 하는 날도 머지않았어요!`);
+  else if (h >= 40) endGame('half', '🙂', '반쯤 개조됨', `개조율 ${h}%. 설거지까지는 해요. 화장실은… 아직 미지의 영역.`);
+  else endGame('sofa', '🛋️', '소파 일체형 남편', `개조율 ${h}%. 일주일이 지났지만 남편은 여전히 소파와 한 몸이에요. 팁: 칭찬 2번 → 같이 하자 → 시키기!`);
+}
+function endGame(id, em, title, text, fromNet) {
+  if (S) { S.over = true; S.ending = id; }
+  const got = store.get('endings', []); const extra = [];
+  if (S && S.chickens >= 5) extra.push('chicken');
+  if (S && S.selfCount >= 3) extra.push('self');
+  const add = [id, ...extra].filter(e => !got.includes(e)); store.set('endings', got.concat(add));
+  if (!fromNet) net({ k: 'end', id, em, title, text, ch: S ? S.chickens : 0, sc: S ? S.selfCount : 0 });
+  const newOnes = add.map(e => ENDINGS.find(x => x.id === e)).filter(Boolean);
+  showCard(`<div class="em">${em}</div><h2>${title}</h2><p>${text}</p>${newOnes.length ? `<p><b>📖 새 엔딩:</b> ${newOnes.map(e => e.icon + ' ' + e.name).join(', ')}</p>` : ''}
+    <button class="primary" data-a="share">📤 결과 공유하기</button>${ROLE !== 'husband' ? '<button class="ghost" data-a="again">다시 하기</button>' : ''}<button class="ghost" data-a="book">📖 엔딩 도감</button>`,
+    { share: () => shareResult(title), again: () => { closeCard(); openStart(); }, book: openBook });
+  render();
+}
+
+// =====================================================================
+// 부부 모드 네트워크
+// =====================================================================
+let ws = null, roomCode = null, netClosing = false, syncAcc = 0, hSendAcc = 0;
+function net(d) { if (!peerOn || ROLE === 'solo' || !ws || ws.readyState !== 1) return; try { ws.send(JSON.stringify({ type: 'msg', d })); } catch {} }
+function netConnect(role, code, onJoined) {
+  const proto = location.protocol === 'https:' ? 'wss' : 'ws';
+  try { ws = new WebSocket(`${proto}://${location.host}/house-ws`); } catch { toast('서버에 연결할 수 없어요'); return; }
+  ws.onopen = () => ws.send(JSON.stringify({ type: 'join', role, code: code || null }));
+  ws.onmessage = e => { let m; try { m = JSON.parse(e.data); } catch { return; } onNet(m, onJoined); };
+  ws.onclose = () => { const was = peerOn; peerOn = false; if (was) peerLeft(true); if (!netClosing && roomCode) { toast('연결이 끊겼어요. 다시 연결하는 중…'); setTimeout(() => netConnect(ROLE, roomCode), 2500); } };
+}
+function onNet(m, onJoined) {
+  if (m.type === 'joined') { roomCode = m.code; onJoined && onJoined(m); if (m.peer) peerJoined(); }
+  else if (m.type === 'error') { toast(m.msg, 4500); if (ROLE === 'husband' && !S) { netClosing = true; ws.close(); openStart(m.msg); } }
+  else if (m.type === 'peer-join') peerJoined();
+  else if (m.type === 'peer-leave') peerLeft();
+  else if (m.type === 'msg' && m.d && typeof m.d === 'object') onMsg(m.d);
+}
+function peerJoined() {
+  peerOn = true; setTags();
+  if (ROLE === 'wife') { toast('💑 남편이 들어왔어요! 이제 진짜 남편이 움직여요', 4000); sfx('heart'); if (!S.busy) enableRemote(); syncNow(); }
+  else { closeCard(); toast('💑 아내와 연결됐어요!', 3000); net({ k: 'hello' }); sendH(); }
+  render();
+}
+function peerLeft(soft) {
+  peerOn = false; setTags();
+  if (ROLE === 'wife') {
+    if (S && remoteH()) { H.state = 'returning'; H.pose = 'idle'; S.pending = null; S.accepted = null; walk(H, COUCH_SIDE[0], COUCH_SIDE[1], () => { lieDown(); render(); }); }
+    if (!soft) toast('남편이 나갔어요. 다시 들어올 때까지 AI 남편이 대신해요', 4000);
+  } else if (!soft) { showCard('<div class="em">🚪</div><h2>아내가 나갔어요</h2><p>아내가 같은 방으로 다시 들어오면 이어서 할 수 있어요.</p>', {}); }
+  render();
+}
+function enableRemote() { if (!peerOn || ROLE !== 'wife') return; H.state = 'remote'; H.path = []; H.net = { x: H.root.position.x, z: H.root.position.z, ry: H.root.rotation.y, pose: H.pose, lie: H.pose === 'lie' }; }
+function snapshot() {
+  return { k: 'st', S: { day: S.day, ap: S.ap, mot: S.mot, res: S.res, hab: S.hab, done: S.done, tvOff: S.tvOff, tv: S.tv, over: S.over, together: S.together, pers: S.pers, extra: S.extra, habit: S.habit, pending: S.pending, accepted: S.accepted, mod: S.mod, chickens: S.chickens, selfCount: S.selfCount, stage: S.stage },
+    mess: Object.fromEntries(Object.keys(mess).map(k => [k, mess[k].visible ? 1 : 0])), dust: dusts.map(d => d.visible ? 1 : 0), ck: chickenBox.visible ? 1 : 0, rm: remote.visible ? 1 : 0, decor,
+    W: [W.root.position.x, W.root.position.z, W.root.rotation.y].map(v => Math.round(v * 100) / 100).concat([W.pose, W.face]) };
+}
+function syncNow() { if (ROLE === 'wife' && peerOn && S) net(snapshot()); }
+function sendH() { if (ROLE !== 'husband') return; net({ k: 'h', x: Math.round(H.root.position.x * 100) / 100, z: Math.round(H.root.position.z * 100) / 100, ry: Math.round(H.root.rotation.y * 100) / 100, pose: H.pose, lie: H.pose === 'lie' ? 1 : 0, f: H.face }); }
+function onMsg(d) {
+  const who = d.w === 'W' ? W : H;
+  switch (d.k) {
+    case 'say': if (typeof d.t === 'string') say(who, d.t.slice(0, 80), !!d.e, 0, true); return;
+    case 'fl': if (typeof d.t === 'string') floatAt(who, d.t.slice(0, 30), String(d.c || '#fff').slice(0, 12), true); return;
+    case 'fx': if (Array.isArray(d.p)) burst(+d.p[0] || 0, +d.p[1] || 0, +d.p[2] || 0, clamp(d.n | 0, 0, 40), d.c | 0, +d.s || 1, +d.z || 0.2, true); return;
+    case 'sfx': sfx(d.s, true); return;
+    case 'toast': if (ROLE === 'husband' && typeof d.t === 'string') toast(d.t.slice(0, 120), 4000); return;
+  }
+  if (ROLE === 'wife') {
+    if (d.k === 'hello') { syncNow(); return; }
+    if (d.k === 'h') { if (!remoteH() && S && !S.busy && H.state !== 'leaving') enableRemote(); if (remoteH()) H.net = d; return; }
+    if (d.k === 'ans' && S && S.pending === d.c) {
+      const c = ALL[d.c]; S.pending = null;
+      if (d.a === 'yes') { S.accepted = d.c; toast(`🎉 남편이 ${c.name} 한대요!`, 3000); sfx('ok'); emote(W, 'smile'); }
+      else if (d.a === 'praise') { toast('😏 남편이 "칭찬해 주면 할게"래요. 칭찬 한 번 해 줘요', 4000); }
+      else { toast('😮‍💨 남편이 이따가 한대요…', 3000); emote(W, 'sad'); }
+      render(); syncNow(); return;
+    }
+    if (d.k === 'vol' && S && ALL[d.c] && !S.done[d.c] && !S.accepted && !S.over) { const c = ALL[d.c]; S.accepted = d.c; S.vol = d.c; S.selfCount++; toast(`🥹 남편이 스스로 ${c.name} 한대요!! (보너스 +5%)`, 4000); sfx('win'); emote(W, 'shock', 2500); say(W, '어머 웬일이야?!'); render(); syncNow(); return; }
+    if (d.k === 'done' && S && S.accepted === d.c && !S.over) { const c = ALL[d.c]; const bonus = S.vol === d.c ? 5 : 0; S.vol = null; finishChore(c, true, bonus); return; }
+    if (d.k === 'emo') { if (d.e === 'heart') { const p = H.headG.getWorldPosition(_v); burst(p.x, p.y + 0.3, p.z, 10, 0xff6a9a, 0.8, 0.25); sfx('heart'); toast('💛 남편이 하트를 보냈어요', 2000); res(-3); render(); } else if (d.e === 'praiseme') { toast('🥺 남편이 칭찬해 달래요', 2500); } return; }
+  }
+  if (ROLE === 'husband') {
+    if (d.k === 'st') { applyState(d); return; }
+    if (d.k === 'req' && ALL[d.c]) { openRequest(ALL[d.c], d.m | 0, d.r | 0); sfx('bell'); return; }
+    if (d.k === 'night' && typeof d.t === 'string') { night(d.t); sfx('night', true); return; }
+    if (d.k === 'end') { if (S) { S.chickens = d.ch | 0; S.selfCount = d.sc | 0; } endGame(String(d.id), String(d.em).slice(0, 8), String(d.title).slice(0, 30), String(d.text).slice(0, 200), true); return; }
+    if (d.k === 'emo' && d.e === 'heart') { const p = W.headG.getWorldPosition(_v); burst(p.x, p.y + 0.3, p.z, 10, 0xff6a9a, 0.8, 0.25); sfx('heart'); return; }
+  }
+}
+let lastDay = 0;
+function applyState(d) {
+  const first = !S;
+  S = Object.assign(S || { used: {} }, d.S); S.busy = false;
+  if (first) { applyPers(); updateOutfit(true); }
+  for (const k in d.mess) if (mess[k]) mess[k].visible = !!d.mess[k];
+  if (Array.isArray(d.dust)) d.dust.forEach((v, i) => dusts[i] && (dusts[i].visible = !!v));
+  chickenBox.visible = !!d.ck; remote.visible = !!d.rm;
+  if (d.decor && JSON.stringify(d.decor) !== JSON.stringify(decor)) { decor = d.decor; applyDecor(); }
+  if (Array.isArray(d.W)) { W.net = { x: d.W[0], z: d.W[1], ry: d.W[2], pose: d.W[3] }; if (d.W[4]) setFace(W, d.W[4]); }
+  if (lastDay && S.day !== lastDay) { setGloves(H, S.stage >= 2); }
+  lastDay = S.day; updateOutfit(first); setTags(); render();
+  if (S.accepted && !hJob) { hJob = { id: S.accepted, n: 0 }; toast(`🧽 ${ALL[S.accepted].name} 하러 가요! 아래 버튼을 눌러요`, 3500); }
+  if (!S.accepted) hJob = null;
+}
+// 남편 쪽: 받은 부탁
+let hJob = null;
+function openRequest(c, m, r) {
+  const mood = m >= r ? '아내가 정성을 많이 들였어요 💛' : m >= r - 15 ? '아내가 살짝 정성을 들였어요' : '아내가 그냥 부탁했어요';
+  openPanel(`<div class="q">🙋‍♀️ 아내: "여보~ <b>${c.name}</b> 좀 해줄래?"<br><small>${mood} · 의욕 ${m} / ${r}</small></div>`,
+    [{ t: '🙆 할게!', cls: 'go', f: () => { net({ k: 'ans', c: c.id, a: 'yes' }); say(H, pick(['그래 알았어!', '오케이 맡겨!'])); emote(H, 'smile'); closePanel(); } },
+     { t: '😏 칭찬해 주면 할게', f: () => { net({ k: 'ans', c: c.id, a: 'praise' }); say(H, '칭찬해 주면 할게~'); closePanel(); } },
+     { t: '🙅 이따가…', f: () => { net({ k: 'ans', c: c.id, a: 'no' }); say(H, pick(['이따 할게~', '이거만 보고!'])); emote(H, 'flat'); closePanel(); } }], true);
+}
+function hGoJob() {
+  if (!hJob) return; const c = ALL[hJob.id];
+  if (H.pose === 'lie') standUp();
+  setGloves(H, true);
+  walk(H, c.spot[0], c.spot[1], () => { faceTo(H, c.look[0], c.look[1]); toast(`🧽 문지르기 버튼을 8번 눌러요!`, 2500); renderControls(); });
+  renderControls();
+}
+function hScrub() {
+  if (!hJob) return; const c = ALL[hJob.id]; const p = H.root.position;
+  if (Math.hypot(p.x - c.spot[0], p.z - c.spot[1]) > 0.8) { hGoJob(); return; }
+  hJob.n++; pose(H, 'work', 600); sfx(c.snd === 'vacuum' ? 'scrub' : c.snd); burst(p.x + Math.sin(H.root.rotation.y) * 0.5, 0.9, p.z + Math.cos(H.root.rotation.y) * 0.5, 5, c.fx, 0.8, 0.15);
+  if (hJob.n >= 8) { net({ k: 'done', c: c.id }); say(H, '다 했다! 😎'); pose(H, 'cheer', 1500); emote(H, 'smile'); hJob = null; setGloves(H, S.stage >= 2); }
+  renderControls();
+}
+function hLie() { if (H.pose === 'lie') { standUp(); renderControls(); return; } walk(H, COUCH_SIDE[0], COUCH_SIDE[1], () => { lieDown(); H.state = 'me'; renderControls(); }); }
+
+// =====================================================================
+// 화면 (버튼 · 패널 · 모달)
+// =====================================================================
+function lbtn(i, t, f, o = {}) { return { i, t, f, ...o }; }
+let panelOpen = false, panelSticky = false;
+function openPanel(html, choices, sticky) {
+  panelOpen = true; panelSticky = !!sticky; const el = $('bpanel'); el.innerHTML = html || '';
+  choices.forEach(c => { const b = document.createElement('button'); b.className = 'ch' + (c.cls ? ' ' + c.cls : ''); b.innerHTML = c.t + (c.s ? `<small>${c.s}</small>` : '') + (c.pb != null ? `<div class="pb"><b style="width:${c.pb}%"></b></div>` : ''); b.disabled = !!c.dis; b.onclick = () => { sfx('tap', true); c.f(); }; el.appendChild(b); });
+  if (!sticky) { const b = document.createElement('button'); b.className = 'ch'; b.textContent = '닫기'; b.style.padding = '8px'; b.onclick = closePanel; el.appendChild(b); }
+}
+function closePanel() { panelOpen = false; panelSticky = false; renderControls(); }
+function openChores() {
+  if (!S || S.over) return;
+  const list = todays().map(c => { const r = reqOf(c), d = S.done[c.id], pct = d ? 100 : Math.min(100, S.mot / r * 100);
+    const st = d ? '✅ 오늘 끝!' : remoteH() ? `필요 의욕 ${r} · 진짜 남편에게 물어봐요` : S.mot >= r ? '지금 하면 해요!' : S.mot >= r - 15 ? '반반… 투덜대며 할 수도' : `의욕 ${r - S.mot} 부족`;
+    return { t: `${c.extra ? '⭐ ' : ''}${c.icon} ${c.name} <small style="display:inline;color:#e9c46a">+${c.gain}%</small>`, s: st, pb: pct, dis: d || S.ap <= 0 || S.busy, cls: !d && S.mot >= r && !remoteH() ? 'hot' : '', f: () => command(c) }; });
+  openPanel(`<div class="q">🧹 무슨 집안일을 부탁할까요?<br><small>남편 의욕 ${S.mot}${S.together ? ' · 🤝 같이 하자 적용 중' : ''}</small></div>`, list);
+}
+function renderControls() {
+  const lc = $('lcol'), bp = $('bpanel');
+  let L = [];
+  if (ROLE === 'husband') {
+    L = [lbtn('💛', '하트', () => { net({ k: 'emo', e: 'heart' }); pose(H, 'heart', 1500); const p = H.headG.getWorldPosition(_v); burst(p.x, p.y + 0.3, p.z, 10, 0xff6a9a, 0.8, 0.25, true); sfx('heart', true); }),
+      lbtn('🥺', '칭찬해줘', () => { net({ k: 'emo', e: 'praiseme' }); say(H, '나 칭찬해 줘…🥺'); }),
+      lbtn(H.pose === 'lie' ? '🧍' : '🛋️', H.pose === 'lie' ? '일어나기' : '눕기', hLie),
+      lbtn('👋', '손인사', () => { pose(H, 'wave', 1600); say(H, '👋', true); })];
+  } else {
+    L = Object.entries(TACTICS).map(([k, t]) => lbtn(t.icon, t.name, () => useTactic(k), { dis: !S || S.over || S.ap <= 0 }));
+  }
+  lc.innerHTML = ''; L.forEach(b => { const e = document.createElement('button'); e.className = 'lb' + (b.hot ? ' hot' : ''); e.innerHTML = `<span class="i">${b.i}</span>${b.t}`; e.disabled = !!b.dis; e.onclick = () => { sfx('tap', true); b.f(); }; lc.appendChild(e); });
+  if (panelOpen) return;
+  bp.innerHTML = '';
+  const add = (t, s, f, cls, dis) => { const b = document.createElement('button'); b.className = 'ch' + (cls ? ' ' + cls : ''); b.innerHTML = t + (s ? `<small>${s}</small>` : ''); b.disabled = !!dis; b.onclick = () => { sfx('tap', true); f(); }; return b; };
+  if (!S) return;
+  if (ROLE === 'husband') {
+    if (hJob) { const c = ALL[hJob.id]; const p = H.root.position; const at = Math.hypot(p.x - c.spot[0], p.z - c.spot[1]) < 0.8;
+      bp.appendChild(at ? add(`🧽 문지르기 ${hJob.n}/8`, `${c.name} 하는 중`, hScrub, 'go') : add(`🧽 ${c.name} 하러 가기`, '아내가 부탁한 일', hGoJob, 'go')); }
+    else bp.appendChild(add('🙋 스스로 집안일 하기', '아내 몰래 점수 따기 (보너스 +5%)', () => {
+      openPanel('<div class="q">🙋 뭘 해 볼까요? <small>아내가 엄청 놀랄 거예요</small></div>', todays().filter(c => !S.done[c.id]).map(c => ({ t: `${c.icon} ${c.name}`, s: `+${c.gain + 5}%`, dis: !!S.accepted || S.over, f: () => { net({ k: 'vol', c: c.id }); say(H, `${c.name} 내가 할게!`); closePanel(); } })));
+    }, '', S.over || !!S.accepted));
+    return;
+  }
+  const can = todays().some(c => !S.done[c.id] && S.mot >= reqOf(c));
+  bp.appendChild(add('🧹 집안일 시키기', S.pending ? '남편 대답 기다리는 중…' : S.accepted ? `남편이 ${ALL[S.accepted].name} 하는 중` : '의욕이 차면 반짝여요', openChores, can && !S.busy && !remoteH() ? 'go hot' : 'go', S.over || S.busy));
+  const r2 = document.createElement('div'); r2.className = 'row2';
+  r2.appendChild(add('🍗 치킨', S.used.chicken ? '오늘 끝' : '하루 1번', useChicken, '', S.over || S.ap <= 0 || S.used.chicken));
+  r2.appendChild(add('🙈 리모컨', S.tvOff ? '숨김' : '숨기기', useRemote, '', S.over || S.ap <= 0 || S.tvOff));
+  bp.appendChild(r2);
+}
+function stateText() {
+  if (!S) return '';
+  if (H.state === 'hiding') return '🫣 숨어 있음';
+  if (H.state === 'sneaking') return '🤫 슬금슬금';
+  if (H.state === 'leaving') return '💢 가출 중';
+  if (H.state === 'working' || (hJob && ROLE === 'husband')) return '🧽 집안일 하는 중';
+  if (S.accepted) return '🧽 집안일 하는 중';
+  if (S.pending) return '🤔 고민 중…';
+  if (S.res >= 70) return '😤 단단히 삐짐';
+  if (H.pose === 'lie') return S.mot >= 60 ? '😆 의욕 충전 완료' : S.mot >= 30 ? '🙂 일어날까 고민 중' : '🛋️ 소파 흡착 중';
+  return S.mot >= 60 ? '😆 뭐든 할 기세' : '🚶 돌아다니는 중';
+}
+function render() {
+  if (!S) { renderControls(); return; }
+  $('dayTxt').textContent = `${S.day}일차 / 7`;
+  $('apBox').innerHTML = (ROLE === 'husband' ? '아내 ' : '') + '⚡' + Array.from({ length: AP_MAX }, (_, i) => `<span class="${i < S.ap ? '' : 'off'}"></span>`).join('');
+  $('mot').style.width = S.mot + '%'; $('motV').textContent = S.mot; $('res').style.width = S.res + '%'; $('resV').textContent = S.res >= 70 ? S.res + ' 삐짐' : S.res; $('hab').style.width = S.hab + '%'; $('habV').textContent = S.hab + '%';
+  $('whoTxt').textContent = `${PERS[S.pers].icon} ${PERS[S.pers].name}` + (ROLE === 'solo' ? ' · 혼자 하기' : ROLE === 'wife' ? (peerOn ? ` · 💑 남편 접속 중 (방 ${roomCode})` : ` · 방 ${roomCode || '…'} · 남편 기다리는 중`) : (peerOn ? ' · 💑 아내와 연결됨' : ' · 아내 기다리는 중'));
+  $('endBtn').disabled = ROLE === 'husband' || S.busy || S.over;
+  screenMat.color.set(S.tvOff ? 0x0b0b10 : S.tv ? 0x3fbf5a : 0x5a8cff); tvL.intensity = S.tvOff ? 0 : 5;
+  plantOk.visible = !mess.plant.visible;
+  HL.state.textContent = stateText(); HL.bar.style.width = S.mot + '%'; HL.num.textContent = S.mot; HL.bar.style.background = S.res >= 70 ? '#ef6a5a' : '#5fd38d';
+  renderControls();
+  if (panelOpen && !panelSticky && ROLE !== 'husband' && $('bpanel').querySelector('.q') && $('bpanel').querySelector('.q').textContent.startsWith('🧹')) openChores();
+}
+// 모달
+function showCard(html, actions) {
+  $('modalCard').innerHTML = html; $('modal').classList.remove('hide');
+  $('modalCard').querySelectorAll('[data-a]').forEach(b => b.onclick = () => { sfx('tap', true); actions[b.dataset.a] && actions[b.dataset.a](b); });
+}
+function closeCard() { $('modal').classList.add('hide'); }
+const HELP = `<p>🛋️ 소파와 한 몸이 된 남편을 7일 안에 <b>스스로 집안일 하는 남자</b>로 개조해요.</p>
+<p>💬 왼쪽 버튼을 누르면 아내가 남편에게 걸어가서 작전을 써요. 의욕이 차면 🧹 <b>집안일 시키기</b>가 반짝여요.</p>
+<p>✨ 같은 일을 할수록 습관이 돼서 쉬워지고, 개조율이 오르면 남편 옷이 바뀌어요. 매일 ⭐ 특별 집안일도 생겨요.</p>
+<p>😤 잔소리를 너무 하면 남편이 몰래 숨거나, 반발심 100이면 가출해요.</p>
+<p>💑 <b>부부 같이 하기</b>를 고르면 링크를 남편에게 보내요. 남편이 자기 폰으로 들어와서 부탁을 받거나 거절하고, 직접 걸어가서 집안일을 해요.</p>
+<p>팁: <b>칭찬 2번 → 같이 하자 → 시키기</b></p>`;
+let chosenPers = 'lazy';
+function openStart(err) {
+  netClosing = true; if (ws) { try { ws.close(); } catch {} } ws = null; roomCode = null; peerOn = false; netClosing = false;
+  if (JOIN && !err) {
+    showCard(`<div class="em">💌</div><h2>아내가 초대했어요</h2><p>방 <b>${JOIN}</b>에 <b>남편</b>으로 들어가요. 아내가 부탁하면 받거나 거절하고, 직접 걸어가서 집안일을 해요. 스스로 하면 보너스!</p><button class="primary" data-a="join">🙋‍♂️ 남편으로 들어가기</button><button class="ghost" data-a="solo">그냥 혼자 하기</button>`,
+      { join: () => joinAsHusband(), solo: () => { history.replaceState(null, '', location.pathname); JOIN = ''; pickPers('solo'); } });
+    return;
+  }
+  showCard(`<div class="em">🛋️</div><h2>남편 개조 프로젝트</h2>${err ? `<p style="color:#ffb0a0">${err}</p>` : ''}<p>소파와 한 몸이 된 남편을 7일 안에 집안일 하는 남자로!</p>
+    <button class="primary" data-a="solo">🙋‍♀️ 혼자 하기</button><button class="ghost" data-a="wife">💑 부부 같이 하기 (남편 초대)</button>
+    <div class="grid2"><button class="ghost" data-a="book" style="margin:0">📖 엔딩 도감</button><button class="ghost" data-a="decor" style="margin:0">🎨 꾸미기</button></div>
+    <button class="ghost" data-a="help">❓ 하는 법</button><a href="/" style="display:block;margin-top:12px;color:var(--dim);font-size:13px">🔥 모닥불 캠핑장으로 놀러 가기</a>`,
+    { solo: () => pickPers('solo'), wife: () => pickPers('wife'), book: openBook, decor: () => openDecor(true), help: () => showCard(`<div class="em">❓</div><h2>하는 법</h2>${HELP}<button class="primary" data-a="back">알겠어요</button>`, { back: () => openStart() }) });
+}
+function pickPers(role) {
+  const html = Object.entries(PERS).map(([k, p]) => `<button class="pick${k === chosenPers ? ' sel' : ''}" data-a="p_${k}"><div class="i">${p.icon}</div><b>${p.name}</b><small>${p.desc}</small></button>`).join('');
+  const acts = { go: () => startAs(role), back: () => openStart() };
+  Object.keys(PERS).forEach(k => acts['p_' + k] = b => { chosenPers = k; $('modalCard').querySelectorAll('.pick').forEach(x => x.classList.toggle('sel', x === b)); });
+  showCard(`<div class="em">🧑</div><h2>어떤 남편인가요?</h2><div class="grid2">${html}</div><button class="primary" data-a="go">${role === 'wife' ? '방 만들기' : '시작하기'}</button><button class="ghost" data-a="back">뒤로</button>`, acts);
+}
+function startAs(role) {
+  ROLE = role; peerOn = false; hJob = null; setTags();
+  if (role === 'solo') { closeCard(); newGame(chosenPers); return; }
+  newGame(chosenPers);
+  showCard('<div class="em">⏳</div><h2>방을 만드는 중…</h2>', {});
+  netConnect('wife', null, m => {
+    if (m.role !== 'wife') return; render();
+    if ($('modal').classList.contains('hide') && !$('modalCard').textContent.includes('방을 만드는 중')) return;
+    const link = `${location.origin}/house/?room=${m.code}`;
+    showCard(`<div class="em">💌</div><h2>남편을 불러요</h2><p>이 링크를 남편에게 보내요. 남편이 자기 폰으로 열면 같은 집에 들어와요.</p><div class="code">${m.code}</div><div class="linkbox">${link}</div>
+      <button class="primary" data-a="send">📤 링크 보내기</button><button class="ghost" data-a="copy">링크 복사</button><button class="ghost" data-a="go">먼저 시작하기 (그동안 AI 남편)</button>`,
+      { send: () => shareLink(link), copy: b => copyText(link, b), go: closeCard });
+  });
+}
+function joinAsHusband() {
+  ROLE = 'husband'; S = null; hJob = null; closeCard(); showCard('<div class="em">⏳</div><h2>아내 집으로 가는 중…</h2>', {});
+  lieDown(); H.state = 'me'; setTags();
+  netConnect('husband', JOIN, m => { showCard('<div class="em">⏳</div><h2>아내를 기다리는 중…</h2><p>아내가 게임 화면을 켜 두면 바로 연결돼요.</p>', {}); });
+}
+async function shareLink(link) {
+  const text = '여보, 이 집 같이 치우자 🧹 (남편 개조 프로젝트)';
+  try { if (navigator.share) { await navigator.share({ title: '남편 개조 프로젝트', text, url: link }); return; } } catch (e) { if (e && e.name === 'AbortError') return; }
+  copyText(link);
+}
+async function copyText(t, btn) { try { await navigator.clipboard.writeText(t); toast('링크를 복사했어요. 카톡에 붙여 넣어요'); if (btn) btn.textContent = '복사했어요 ✓'; } catch { toast('복사가 안 돼요. 링크를 길게 눌러 복사해요', 3500); } }
+function openBook() {
+  const got = store.get('endings', []);
+  const cells = ENDINGS.map(e => { const ok = got.includes(e.id); return `<div class="end${ok ? '' : ' lock'}"><div class="i">${ok ? e.icon : '❔'}</div><b>${ok ? e.name : '???'}</b><small>${e.hint}</small></div>`; }).join('');
+  showCard(`<div class="em">📖</div><h2>엔딩 도감 ${got.length}/${ENDINGS.length}</h2><p>엔딩을 모으면 🎨 꾸미기 아이템이 열려요.</p><div class="grid2" style="grid-template-columns:1fr 1fr 1fr">${cells}</div><button class="primary" data-a="close">닫기</button>`,
+    { close: () => { if (!S || (S.over && ROLE !== 'husband')) openStart(); else closeCard(); } });
+}
+function applyDecor() {
+  const s = DECOR.sofa[decor.sofa][0]; sofaMat.color.set(s); sofa2Mat.color.set(new THREE.Color(s).multiplyScalar(0.85));
+  const w = DECOR.wall[decor.wall]; wallM.map = wallTexOf(w[0], w[1]); wallM.needsUpdate = true;
+  const pj = DECOR.pj[decor.pj]; setShirt(H, pj[0], decor.pj === 3);
+}
+function openDecor(fromStart) {
+  const n = store.get('endings', []).length;
+  const row = (key, list, sw) => `<div class="lbl">${{ sofa: '🛋️ 소파', wall: '🧱 벽지', pj: '👕 남편 잠옷' }[key]}</div><div class="sw">${list.map((it, i) => { const lock = n < UNLOCK[i]; return `<button data-a="${key}_${i}" class="${decor[key] === i ? 'sel' : ''}" ${lock ? 'disabled' : ''}><i style="background:${sw(it)}"></i>${lock ? `🔒 엔딩 ${UNLOCK[i]}개` : it[it.length - 1]}</button>`; }).join('')}</div>`;
+  const hex = c => '#' + new THREE.Color(c).getHexString();
+  const acts = { close: () => { if (fromStart) openStart(); else closeCard(); } };
+  ['sofa', 'wall', 'pj'].forEach(k => DECOR[k].forEach((_, i) => acts[`${k}_${i}`] = () => { if (ROLE === 'husband') { toast('꾸미기는 아내가 해요'); return; } decor[k] = i; store.set('decor', decor); applyDecor(); syncNow(); openDecor(fromStart); }));
+  showCard(`<div class="em">🎨</div><h2>꾸미기</h2><p>엔딩 ${n}개 모음 · 엔딩을 더 모으면 잠긴 것도 열려요.</p>${row('sofa', DECOR.sofa, it => hex(it[0]))}${row('wall', DECOR.wall, it => `linear-gradient(90deg,${it[0]} 50%,${it[1]} 50%)`)}${row('pj', DECOR.pj, it => hex(it[0]))}<button class="primary" data-a="close">닫기</button>`, acts);
+}
+// 결과 공유 (화면 + 글씨 → 이미지)
+async function shareResult(title) {
+  composer.render();
+  const src = renderer.domElement, W0 = 720, H0 = 960, c = document.createElement('canvas'); c.width = W0; c.height = H0; const g = c.getContext('2d');
+  const sr = src.width / src.height, dr = W0 / H0; let sw = src.width, sh = src.height, sx = 0, sy = 0; if (sr > dr) { sw = sh * dr; sx = (src.width - sw) / 2; } else { sh = sw / dr; sy = (src.height - sh) / 2; }
+  g.drawImage(src, sx, sy, sw, sh, 0, 0, W0, H0);
+  const gr = g.createLinearGradient(0, H0 * 0.45, 0, H0); gr.addColorStop(0, 'rgba(8,9,14,0)'); gr.addColorStop(1, 'rgba(8,9,14,.92)'); g.fillStyle = gr; g.fillRect(0, 0, W0, H0);
+  g.fillStyle = 'rgba(8,9,14,.75)'; g.fillRect(0, 0, W0, 92); g.fillStyle = '#fff'; g.font = '34px "Gowun Dodum", sans-serif'; g.textAlign = 'left'; g.fillText('🛋️ 남편 개조 프로젝트', 30, 58);
+  g.textAlign = 'center'; g.font = '30px "Gowun Dodum", sans-serif'; g.fillStyle = '#e9c46a'; g.fillText(title || (S ? `${S.day}일차 진행 중` : ''), W0 / 2, H0 - 210);
+  g.fillStyle = '#fff'; g.font = '84px "Gowun Dodum", sans-serif'; g.fillText(`개조율 ${S ? S.hab : 0}%`, W0 / 2, H0 - 115);
+  g.font = '24px "Gowun Dodum", sans-serif'; g.fillStyle = '#9aa3bd'; g.fillText(`${S ? PERS[S.pers].name : ''} · ${location.host}/house`, W0 / 2, H0 - 55);
+  const url = `${location.origin}/house/`, text = `우리 남편 개조율 ${S ? S.hab : 0}%! ${title || ''} 🛋️ 너희 남편도 개조해 봐`;
+  const blob = await new Promise(r => c.toBlob(r, 'image/png'));
+  try { const file = new File([blob], 'husband.png', { type: 'image/png' }); if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], text: text + ' ' + url }); return; } } catch (e) { if (e && e.name === 'AbortError') return; }
+  const dataUrl = c.toDataURL('image/png');
+  showCard(`<div class="em">📤</div><h2>결과 공유</h2><p>이미지를 길게 눌러 저장한 뒤 인스타·카톡에 올려요.</p><img id="shareImg" src="${dataUrl}"><button class="primary" data-a="copy">글과 링크 복사</button><button class="ghost" data-a="close">닫기</button>`,
+    { copy: b => copyText(text + ' ' + url, b), close: () => { if (S && S.over) closeCard(); else closeCard(); } });
+}
+
+// 오른쪽 버튼
+const SND_ON = '<path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12"/>', SND_OFF = '<path d="M4 9v6h4l5 4V5L8 9H4z"/><path d="M17 9l5 6M22 9l-5 6"/>';
+function soundIcon() { $('soundIco').innerHTML = muted ? SND_OFF : SND_ON; }
+soundIcon();
+$('soundBtn').onclick = () => { muted = !muted; store.set('muted', muted); soundIcon(); if (!muted) sfx('tap', true); };
+$('shareBtn').onclick = () => shareResult(S && S.over ? null : null);
+$('helpBtn').onclick = () => showCard(`<div class="em">❓</div><h2>하는 법</h2>${HELP}<button class="primary" data-a="close">계속하기</button>`, { close: closeCard });
+$('decorBtn').onclick = () => openDecor(false);
+$('bookBtn').onclick = openBook;
+$('endBtn').onclick = endDay;
+let overview = false; $('viewBtn').onclick = () => { overview = !overview; toast(overview ? '집 전체 보기' : '가까이 보기', 1200); };
+
+// =====================================================================
+// 입력
+// =====================================================================
+const ray = new THREE.Raycaster(), ndc = new THREE.Vector2(); let down = null;
+const me = () => ROLE === 'husband' ? H : W;
+canvas.addEventListener('pointerdown', e => { down = { x: e.clientX, y: e.clientY }; });
+canvas.addEventListener('pointerup', e => {
+  if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 12) return; down = null; if (!S || !$('modal').classList.contains('hide')) return;
+  ndc.set(e.clientX / innerWidth * 2 - 1, -(e.clientY / innerHeight) * 2 + 1); ray.setFromCamera(ndc, camera);
+  if (ROLE !== 'husband' && !S.over) {
+    for (const h of ray.intersectObjects(clickables, true)) {
+      let o = h.object; if (!o.visible) continue; while (o && !o.userData.action) o = o.parent; if (!o || !o.visible) continue; const k = o.userData.action;
+      if (k === 'husband') { if (H.state === 'hiding') { findHusband(); return; } if (S.busy) { hSay('지금 하는 중이잖아~'); return; } goHusband(() => openChores()); return; }
+      if (k === 'tv') { walk(W, -4, -4.5, () => { faceTo(W, -4, -6); toast(S.tvOff ? '리모컨은 숨겨 뒀어요 🤫' : '🙈 리모컨 버튼으로 리모컨을 숨길 수 있어요'); }); return; }
+      if (k === 'fridge') { walk(W, 6.95, -4.35, () => { faceTo(W, 7.35, -5.5); toast(S.used.chicken ? '오늘 치킨은 이미 시켰어요' : '🍗 치킨 버튼으로 치킨을 시킬 수 있어요'); }); return; }
+      const c = ALL[k]; if (c) { if (c.extra && S.extra !== c.id) break; walk(W, c.wife[0], c.wife[1], () => { faceTo(W, c.look[0], c.look[1]); toast(S.done[c.id] ? `${c.icon} ${c.name}: 오늘은 끝났어요` : `${c.icon} ${c.name} · 필요 의욕 ${reqOf(c)} · 남편에게 시켜야 해요`); }); return; }
+    }
+  }
+  const f = ray.intersectObjects(floors, false)[0];
+  if (f) {
+    if (!panelSticky) closePanel(); const [x, z] = nearestFree(f.point.x, f.point.z); ring.position.set(x, 0.04, z); ring.visible = true; ring.material.opacity = 0.7; ring.scale.setScalar(1);
+    if (ROLE === 'husband') { if (H.pose === 'lie') standUp(); H.pose = 'idle'; walk(H, x, z, () => renderControls()); }
+    else walk(W, x, z);
+  }
+});
+
+// =====================================================================
+// 루프
+// =====================================================================
+const camT = new THREE.Vector3(), camP = new THREE.Vector3(); let first = true;
+const clock = new THREE.Clock();
+function followRemote(ch, dt) {
+  const n = ch.net; if (!n) return;
+  const p = ch.root.position;
+  if (n.lie) { if (ch.pose !== 'lie') { if (ch === H) { lieDown(); H.state = 'remote'; } } return; }
+  if (ch.pose === 'lie' && ch === H) { standUp(); }
+  const dx = n.x - p.x, dz = n.z - p.z, d = Math.hypot(dx, dz);
+  if (d > 3) { p.x = n.x; p.z = n.z; } else { const k = Math.min(1, dt * 8); p.x += dx * k; p.z += dz * k; }
+  ch.moving = d > 0.03; let dr = n.ry - ch.root.rotation.y; dr = Math.atan2(Math.sin(dr), Math.cos(dr)); ch.root.rotation.y += dr * Math.min(1, dt * 10);
+  if (!ch.moving && n.pose && n.pose !== 'lie') ch.pose = n.pose; else if (ch.moving) ch.pose = 'idle';
+  if (n.f && ch === H) setFace(H, n.f);
+}
+function idleFace(ch) {
+  if (ch.faceLock && performance.now() < ch.faceLock) return;
+  if (ch === H && S) { if (H.pose === 'lie' && H.sub === 'snore') return setFace(H, 'sleep'); if (H.pose === 'lie' && H.sub === 'yawn') return setFace(H, 'shock'); setFace(H, S.res >= 70 ? 'angry' : H.state === 'working' ? 'flat' : S.mot >= 30 ? 'smile' : 'flat'); }
+  else setFace(ch, 'smile');
+}
+function loop() {
+  const dt = Math.min(clock.getDelta(), 0.05), t = clock.elapsedTime;
+  if (ROLE === 'husband') { stepChar(H, dt); followRemote(W, dt); }
+  else { stepChar(W, dt); if (remoteH()) followRemote(H, dt); else stepChar(H, dt); }
+  animPerson(W, dt, t); animPerson(H, dt, t);
+  // 소파 위 남편의 딴짓
+  if (H.pose === 'lie' && ROLE !== 'husband' && !remoteH()) { H.idleT -= dt; if (H.idleT <= 0) { H.sub = pick(['phone', 'phone', 'yawn', 'snore', 'scratch', 'tv']); H.idleT = rand(4, 8); if (S && !S.over) { if (H.sub === 'yawn') say(H, '🥱', true); if (H.sub === 'snore') say(H, '💤', true, 3500); if (H.sub === 'phone' && Math.random() < 0.4) say(H, pick(['(쇼츠 보는 중)', 'ㅋㅋㅋㅋ', '(게임 중)'])); } } }
+  if (ROLE === 'husband' && H.pose === 'lie') { H.idleT -= dt; if (H.idleT <= 0) { H.sub = pick(['phone', 'tv', 'scratch']); H.idleT = rand(5, 9); } }
+  if (S) { idleFace(H); if (ROLE !== 'husband') idleFace(W); }
+  for (let i = parts.length - 1; i >= 0; i--) { const s = parts[i], u = s.userData; u.life -= dt; u.v.y -= dt * 1.5; s.position.addScaledVector(u.v, dt); s.material.opacity = Math.max(0, u.life); if (u.life <= 0) { scene.remove(s); s.material.dispose(); parts.splice(i, 1); } }
+  stink.forEach(s => { const k = (t * 0.45 + s.userData.ph) % 1.6; s.position.set(6.45 + Math.sin(t * 2 + s.userData.ph) * 0.15 + s.userData.ph * 0.05, 0.75 + k, 5.4); s.material.opacity = 0.55 * (1 - k / 1.6); });
+  if (ring.visible) { ring.material.opacity -= dt * 1.2; ring.scale.multiplyScalar(1 + dt * 0.8); if (ring.material.opacity <= 0) ring.visible = false; }
+  bulbs.forEach((b, i) => b.scale.setScalar(0.85 + Math.sin(t * 2 + i) * 0.2));
+  flame.scale.set(1 + Math.sin(t * 20) * 0.1, 1.8 + Math.sin(t * 13) * 0.3, 1);
+  if (S && !S.tvOff) tvL.intensity = 4 + Math.sin(t * 9) + Math.sin(t * 3.3);
+  if (S) plantOk.visible = !mess.plant.visible;
+  // 네트워크 동기화
+  if (peerOn) { syncAcc += dt; hSendAcc += dt; if (ROLE === 'wife' && syncAcc > 0.25) { syncAcc = 0; syncNow(); } if (ROLE === 'husband' && hSendAcc > 0.12) { hSendAcc = 0; sendH(); } }
+  if (ROLE === 'husband' && hJob) { const c = ALL[hJob.id], p = H.root.position, at = Math.hypot(p.x - c.spot[0], p.z - c.spot[1]) < 0.8; if (at !== hJob.at) { hJob.at = at; renderControls(); } }
+  // 카메라: 내 캐릭터를 비스듬히 위에서 가까이
+  const portrait = camera.aspect < 0.8, focus = me().root.position;
+  const off = overview ? (portrait ? _v.set(0, 30, 19) : _v.set(0, 14, 11)) : (portrait ? _v.set(1.4, 7.4, 8.4) : _v.set(1.2, 5.8, 7.0));
+  const tgt = overview ? new THREE.Vector3(0, 0, portrait ? 0.8 : 0.5) : new THREE.Vector3(clamp(focus.x, -6, 6), 0.9, clamp(focus.z, -4.6, 4.6) + (portrait ? 1.3 : 0.5));
+  if (first) { camT.copy(tgt); camP.copy(tgt).add(off); first = false; }
+  camT.lerp(tgt, Math.min(1, dt * 3)); camP.lerp(tgt.clone().add(off), Math.min(1, dt * 3)); camera.position.copy(camP); camera.lookAt(camT);
+  composer.render();
+  placeTag(WL, W); placeTag(HL, H);
+  requestAnimationFrame(loop);
+}
+
+// 머리카락 재질 표시 (성격별 색 바꾸기용)
+H.headG.traverse(m => { if (m.isMesh && m.material && m.material.color && m.material.color.getHex() === 0x4a3326) { m.material = m.material.clone(); m.material.userData.hair = true; } });
+{ const hm = H.headG.children.find(m => m.material && m.material.userData.hair); if (hm) { const shared = hm.material; H.headG.traverse(m => { if (m.isMesh && m.material && m.material.userData.hair) m.material = shared; }); H.brows.forEach(b => b.material = shared); } }
+applyDecor();
+lieDown(); W.root.position.set(0, 0, 2.6); W.root.rotation.y = Math.PI;
+setTags(); render();
+$('loading').remove();
+loop();
+openStart();
