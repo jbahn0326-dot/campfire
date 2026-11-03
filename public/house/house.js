@@ -25,7 +25,7 @@ let EP = 'sofa';           // 에피소드: sofa(1화) | drink(2화)
 const EPISODES = {
   sofa: { no: 1, icon: '🛋️', name: '소파 일체형 남편', desc: '7일 안에 집안일 하는 남자로!', long: '소파와 한 몸이 된 남편을 칭찬·잔소리·치킨으로 꼬셔서 7일 안에 스스로 집안일 하는 남자로 개조해요.' },
   drink: { no: 2, icon: '🍺', name: '술고래 남편', desc: '7일 금주 달력 채우기', long: '매일 저녁 "한 잔만…"을 외치는 남편! 부장님 전화, 친구 단톡, 야구 중계 유혹을 막고 탄산수·산책·홈트로 버티게 해서 7일 금주 도장을 채워요.' },
-  quit: { no: 3, icon: '💼', name: '회사 때려치겠다는 남편', desc: '공개 예정', locked: true }
+  quit: { no: 3, icon: '💼', name: '회사 때려치겠다는 남편', desc: '멘탈·통장 지키며 7일 버티기', long: '퇴근할 때마다 "나 진짜 그만둘래…"를 외치는 남편! 매일 회사 사건에 어떻게 대답하느냐, 들어주기·도시락·가계부·부업 응원으로 멘탈과 통장을 어떻게 지키느냐에 따라 버티기·이직·부부 창업·퇴사 후 유튜버까지 엔딩이 갈려요.' }
 };          // solo | wife | husband
 let peerOn = false;
 
@@ -604,15 +604,21 @@ const ENDINGS = [
   { id: 'd5', ep: 'drink', icon: '😌', name: '거의 금주', hint: '2화 · 금주 도장 5~6개' },
   { id: 'd3', ep: 'drink', icon: '🙂', name: '반쯤 참았어요', hint: '2화 · 금주 도장 3~4개' },
   { id: 'dwhale', ep: 'drink', icon: '🐳', name: '술고래 그대로', hint: '2화 · 금주 도장 2개 이하' },
-  { id: 'dgym', ep: 'drink', icon: '💪', name: '홈트 중독', hint: '2화 · 홈트 5번 이상' }
+  { id: 'dgym', ep: 'drink', icon: '💪', name: '홈트 중독', hint: '2화 · 홈트 5번 이상' },
+  { id: 'q_stay', ep: 'quit', icon: '🏢', name: '웃으며 출근', hint: '3화 · 안 그만두고 멘탈 50 이상' },
+  { id: 'q_burn', ep: 'quit', icon: '😵', name: '번아웃 직장인', hint: '3화 · 안 그만뒀지만 멘탈 바닥' },
+  { id: 'q_move', ep: 'quit', icon: '🚀', name: '더 좋은 곳으로 이직', hint: '3화 · 헤드헌터 제안 + 멘탈 지키기' },
+  { id: 'q_startup', ep: 'quit', icon: '💑', name: '부부 창업 대박', hint: '3화 · 사표 내고 부업 70 이상' },
+  { id: 'q_rest', ep: 'quit', icon: '🌴', name: '한 달 쉬어가기', hint: '3화 · 사표 내고 통장·멘탈 넉넉' },
+  { id: 'q_youtube', ep: 'quit', icon: '📹', name: '퇴사 후 유튜버 (구독자 12명)', hint: '3화 · 사표 내고 아무 준비 없이…' }
 ];
 let S = null;
 function reqOf(c) { let r = c.req - (S.habit[c.id] || 0) * 10 + (S.mod[c.id] || 0); if (S.together) r -= 25; return clamp(r, 5, 100); }
 function pm(k, d = 1) { const m = PERS[S.pers].m; return (m[k] ?? d) * (m.all && (k === 'praise' || k === 'nag' || k === 'sigh' || k === 'chicken' || k === 'together') ? m.all : 1); }
 
 function newGame(pers) {
-  S = { day: 1, ap: AP_MAX, mot: 15, res: 5, hab: 0, used: {}, habit: {}, mod: {}, done: {}, tvOff: false, together: false, tv: false, over: false, busy: false, pers, extra: null, chickens: 0, selfCount: 0, pending: null, accepted: null, stage: 0, ending: null, gifted: {}, ep: EP, crave: 35, will: 15, cal: [], clock: 0, hidden: false, tempt: null, relapsed: false, workouts: 0 };
-  applyPers(); H.root.visible = true; setGloves(H, false); updateOutfit(true); startDay(true);
+  S = { day: 1, ap: AP_MAX, mot: 15, res: 5, hab: 0, used: {}, habit: {}, mod: {}, done: {}, tvOff: false, together: false, tv: false, over: false, busy: false, pers, extra: null, chickens: 0, selfCount: 0, pending: null, accepted: null, stage: 0, ending: null, gifted: {}, ep: EP, crave: 35, will: 15, cal: [], clock: 0, hidden: false, tempt: null, relapsed: false, workouts: 0, mental: 45, urge: 30, money: 300, side: 0, quit: false, offer: false, quitDay: 0, storyUsed: [], tripped: false };
+  applyPers(); applyDecor(); H.root.visible = true; setGloves(H, false); updateOutfit(true); startDay(true);
 }
 function applyPers() { const P = PERS[S.pers]; H.headG.children.forEach(m => { if (m.material === undefined) return; }); hairColor(H, P.hair); setTags(); }
 function hairColor(ch, c) { ch.headG.traverse(m => { if (m.isMesh && m.material && m.material.color && m.material.userData.hair) m.material.color.set(c); }); }
@@ -620,6 +626,8 @@ function startDay(first) {
   Object.assign(S, { ap: AP_MAX, used: {}, mod: {}, done: {}, tvOff: false, together: false, tv: false, busy: false, pending: null, accepted: null, drunk: 0, slept: false, gifted: {} });
   drunkMess.clear(); H.drunk = false; H.drunkHold = false; H.speed = 2.5; H.cheekM.color.copy(PM.cheek.color); H.cheeks.forEach(c => c.scale.set(1, 0.6, 0.4)); H.mug.visible = W.mug.visible = false; H.root.visible = true;
   if (EP === 'drink') { startDrinkDay(first); return; }
+  if (EP === 'quit') { startQuitDay(first); return; }
+  tie.visible = false;
   beerG.visible = false;
   if (!first) S.mot = Math.round(S.mot * 0.3) + 12;
   const e = first ? EVENTS[0] : pickEvent(); if (e.tv) S.tv = true; if (e.f) e.f();
@@ -644,6 +652,8 @@ function canAct() {
   if (drunkOn()) { toast('🍺 술 취한 남편한테는 왼쪽 취객 대처 버튼을 써요'); return false; }
   if (S.slept || (EP === 'drink' && S.midnight)) { toast('💤 남편이 자고 있어요. 🌙 버튼으로 하루를 마쳐요'); return false; }
   if (EP === 'drink' && S.tempt) { toast('📞 먼저 유혹 전화에 대답해 줘요!'); return false; }
+  if (EP === 'quit' && S.story) { toast('💬 먼저 남편 이야기에 대답해 줘요!'); return false; }
+  if (EP === 'quit' && (H.state === 'commute' || H.state === 'quitting')) { toast('남편이 아직 오는 중이에요…'); return false; }
   if (S.busy) { toast(S.busyLabel ? `${S.busyLabel}… 끝날 때까지 기다려요` : '남편이 집안일 하는 중이에요. 끝날 때까지 기다려요'); return false; }
   if (H.state === 'sneaking' || H.state === 'returning' || H.state === 'working') { toast('남편이 어디론가 가고 있어요…'); return false; }
   if (H.state === 'gifting') { toast('🎁 남편이 뭔가 준비하고 있어요… 잠깐만 기다려 봐요'); return false; }
@@ -991,6 +1001,128 @@ const DRINK_ACTS = {
       walk(H, 0.4, 0.2, () => { faceTo(H, 0.4, 3); H.pose = 'work'; let k = 0; const iv = setInterval(() => { const p = H.root.position; burst(p.x, 1.4, p.z, 3, 0x9fd8ff, 0.6, 0.12); sfx('scrub', true); if (++k >= 10) { clearInterval(iv); H.pose = 'cheer'; say(H, '오… 개운한데? 💪'); crave(-18); will(12); res(4); S.workouts = (S.workouts || 0) + 1; setTimeout(() => { H.pose = 'idle'; walk(H, COUCH_SIDE[0], COUCH_SIDE[1], () => { lieDown(); done(); }); }, 1200); } }, 250); });
     }); }); } }
 };
+
+// =====================================================================
+// 3화: 회사 때려치겠다는 남편 (멘탈·퇴사 욕구·통장·부업)
+// =====================================================================
+const tie = new THREE.Group(); H.inner.add(tie);
+{ const k = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.05, 0.03), mat(0xb02a3a)); k.position.set(0, 0.8, 0.205); tie.add(k); const b = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.26, 0.02), mat(0xc0343f)); b.position.set(0, 0.64, 0.23); b.rotation.x = -0.1; tie.add(b); }
+tie.visible = false;
+const STORIES = [
+  { icon: '😤', who: '부장님', text: '"이번 주말에 출근하래… 나 진짜 그만둘래"', ch: [
+    { t: '🤗 고생했어, 맛있는 거 해 줄게', m: 12, u: -5 }, { t: '😡 부장님 진짜 너무하네! 같이 욕해 줄게', m: 8, u: 6 },
+    { t: '📊 주말수당은 나와?', m: -4, u: -8, $: 10 }, { t: '🏖️ 그냥 확 그만둬!', m: 5, u: 25 }] },
+  { icon: '🥲', who: '후배', text: '"내 아이디어를 후배가 자기 거라고 발표했어…"', ch: [
+    { t: '🫂 그거 진짜 속상했겠다', m: 12, u: -6 }, { t: '📝 증거 남겨 놓자, 메일 있어?', m: 4, u: -10 },
+    { t: '💡 그 아이디어로 부업 해 보자!', m: 6, side: 12 }, { t: '🙄 회사가 원래 그렇지 뭐', m: -8, u: 10 }] },
+  { icon: '💸', who: '연봉 협상', text: '"연봉 동결이래… 물가는 오르는데"', ch: [
+    { t: '🍖 오늘은 고기 먹자!', m: 10, $: -5 }, { t: '📞 헤드헌터 한번 만나 봐', m: 4, u: -8, offer: true },
+    { t: '📊 그래도 우리 아직 괜찮아', m: 6, u: -6 }, { t: '😮‍💨 하… 우리 대출은 어떡해', m: -10, u: 12 }] },
+  { icon: '🎉', who: '팀장님', text: '"오늘 발표 칭찬받았어! 근데 일은 더 늘었어…"', ch: [
+    { t: '👏 우리 남편 최고! 자랑스러워', m: 15, u: -10 }, { t: '🍰 축하 케이크 사 올게', m: 12, $: -3 },
+    { t: '😏 칭찬 말고 보너스 달라 해', m: 5, u: 4 }] },
+  { icon: '📞', who: '헤드헌터', text: '"헤드헌터한테 연락 왔어. 연봉 20% 더 준대…"', ch: [
+    { t: '🚀 한번 만나 봐! 손해 볼 거 없잖아', m: 8, u: -12, offer: true }, { t: '🏢 지금 회사가 안정적이지 않아?', m: -3, u: 8 },
+    { t: '🤔 조건 꼼꼼히 같이 보자', m: 5, u: -6, offer: true }] },
+  { icon: '😴', who: '야근', text: '"야근 3일째야… 나 사람 맞아?"', ch: [
+    { t: '🛁 반신욕 물 받아 놨어', m: 14, u: -6 }, { t: '🍱 내일 도시락 싸 줄게', m: 10, $: -1 },
+    { t: '📢 몸 버려! 칼퇴 좀 해!', m: -4, u: 10 }] },
+  { icon: '🍻', who: '동기', text: '"동기가 퇴사하고 세계여행 간대… 부럽다"', ch: [
+    { t: '✈️ 우리도 주말에 가까운 데 가자', m: 12, u: -8, $: -10 }, { t: '💡 당신도 하고 싶은 거 준비해 봐', m: 6, side: 10 },
+    { t: '😅 그 동기 통장은 괜찮대?', m: -2, u: -10 }, { t: '🌍 우리도 다 때려치고 가자!', m: 8, u: 22 }] }
+];
+const QUIT_STORIES = [
+  { icon: '📉', who: '통장', text: '"통장 잔고 보니까 현타 온다…"', ch: [{ t: '📊 같이 가계부 다시 짜자', m: 4, $: 10 }, { t: '🧾 단기 알바라도 해 볼까?', m: -3, $: 25 }, { t: '🤗 괜찮아, 쉬는 것도 일이야', m: 12 }] },
+  { icon: '📹', who: '유튜브', text: '"퇴사 브이로그 첫 영상 조회수 12…"', ch: [{ t: '💡 부업으로 제대로 키워 보자', side: 15, m: 4 }, { t: '👏 12명이면 시작이 반!', m: 10 }, { t: '🙄 그거 언제 돈 돼?', m: -10 }] },
+  { icon: '🤝', who: '친구', text: '"친구가 같이 창업하자는데…"', ch: [{ t: '🚀 사업계획서 같이 보자', side: 18, m: 4 }, { t: '🤔 일단 작게 시작해 보자', side: 10, m: 6 }, { t: '😰 무서워, 하지 마', m: -6 }] }
+];
+function qd(k, v, label, col) { v = Math.round(v); if (!v) return; if (k === 'money') S.money = Math.max(0, S.money + v); else S[k] = clamp(S[k] + v, 0, 100); floatAt(H, `${v > 0 ? '+' : ''}${v}${label}`, col || (v > 0 ? '#8fe3b8' : '#ff8a7a')); }
+function applyQ(o) {
+  if (o.m) qd('mental', o.m * (o.m > 0 ? pm('praise') : 1), ' 멘탈');
+  if (o.u && !S.quit) setTimeout(() => qd('urge', o.u, ' 퇴사 욕구', o.u > 0 ? '#ff8a7a' : '#8fe3b8'), 250);
+  if (o.$) setTimeout(() => qd('money', o.$, '만 원', o.$ > 0 ? '#ffd23a' : '#ff8a7a'), 500);
+  if (o.side) setTimeout(() => qd('side', o.side * (S.quit ? 1.4 : 1), ' 부업', '#9fd8ff'), 750);
+  if (o.offer && !S.offer) { S.offer = true; setTimeout(() => toast('📞 헤드헌터 제안을 잡아 뒀어요! 멘탈을 지키면 이직 엔딩이 열려요', 3500), 900); }
+  setTimeout(() => { renderBars(); if (!S.quit && S.urge >= 100) quitNow(); else render(); }, 900);
+}
+function openStory() {
+  if (!S || S.over) return;
+  const pool = (S.quit ? QUIT_STORIES : STORIES).filter(x => !S.storyUsed.includes(x.who));
+  const T = S.day === 1 && !S.quit ? STORIES[0] : pick(pool.length ? pool : (S.quit ? QUIT_STORIES : STORIES));
+  S.storyUsed.push(T.who); S.story = T;
+  say(H, T.text.replace(/"/g, ''), false, 5000); emote(H, S.quit ? 'flat' : 'sad', 3000);
+  openPanel(`<div class="q"><span>${T.icon} <b>${T.who}</b> 이야기 · 뭐라고 대답할까요?</span></div><div class="q"><small>${T.text}</small></div>`,
+    T.ch.map(c => ({ t: c.t, f: () => { S.story = null; closePanel(); say(W, c.t.replace(/^\S+\s/, '')); pose(W, c.m >= 10 ? 'heart' : c.u >= 15 ? 'cheer' : 'idle', 1500); sfx(c.m >= 8 ? 'praise' : c.m < 0 ? 'no' : 'tap'); applyQ(c);
+      setTimeout(() => hSay(c.m >= 10 ? pick(['여보밖에 없다…', '조금 살 것 같아', '고마워 진짜']) : c.u >= 15 ? '그치?! 나 진짜 그만둔다!!' : c.m < 0 ? '…그런 말 듣자고 한 얘기 아닌데' : '음… 그렇긴 하지'), 900); } })), true);
+}
+function startQuitDay(first) {
+  for (const k in mess) mess[k].visible = false; dusts.forEach(d => d.visible = false); S.extra = null; beerG.visible = false; chickenBox.visible = false; remote.visible = true;
+  let msg = '';
+  if (!first) {
+    if (!S.quit) { qd('mental', -8, ''); S.urge = clamp(S.urge + (100 - S.mental) / 7, 0, 100); }
+    if (S.lunch) { S.mental = clamp(S.mental + 6, 0, 100); S.lunch = false; msg += '\n🍱 어제 싸 준 도시락 덕분에 점심이 행복했대요 (멘탈 +6)'; }
+    if (!S.quit && S.day === 5) { S.money += 300; msg += '\n💰 월급날! 통장 +300만 원'; }
+    S.money = Math.max(0, S.money - (S.quit ? 25 : 10)); msg += S.quit ? '\n💸 수입이 없어서 생활비 -25만 원' : '';
+    if (S.tomorrow) { if ((S.tomorrow.mot || 0) > 0) S.mental = clamp(S.mental + 10, 0, 100); S.ap += S.tomorrow.ap || 0; S.tomorrow = null; }
+  }
+  Object.assign(S, { story: null });
+  tie.visible = !S.quit; if (!S.quit) setShirt(H, 0xf4f4f4); else applyDecor();
+  W.path = []; W.onArrive = null; W.pose = 'idle'; W.root.position.set(-1.0, 0, 1.9); W.root.rotation.y = -Math.PI / 2;
+  if (S.quit) {
+    lieDown(); H.sub = 'phone';
+    toast(`💼 3화 · 백수 ${S.day - S.quitDay + 1}일차 저녁` + msg, 5000);
+    setTimeout(() => { if (S && !S.over && !S.story) openStory(); }, 2200);
+  } else {
+    lieDown(); H.root.visible = false; H.state = 'commute';
+    toast((first ? '💼 3화 · 회사 때려치겠다는 남편! 퇴사 욕구 100이 되면 진짜 사표를 내요' : `💼 ${S.day}일차 저녁 · 남편 퇴근 중…`) + msg, 5000);
+    setTimeout(() => {
+      if (!S || S.over) return; sfx('door'); H.inner.rotation.set(0, 0, 0); H.root.visible = true; H.root.position.set(0, 0, 5.9); H.root.rotation.y = Math.PI; H.pose = 'sigh'; H.shadow.visible = true; H.state = 'returning'; H.speed = 1.8;
+      say(H, pick(['다녀왔어…', '하…… 나 왔어', '여보… 나 진짜 그만둘래']));
+      walk(H, COUCH_SIDE[0], COUCH_SIDE[1], () => { H.speed = 2.5; lieDown(); render(); setTimeout(() => { if (S && !S.over && !S.story) openStory(); }, 600); });
+      render();
+    }, 1800);
+  }
+  closePanel(); render();
+}
+function quitNow() {
+  if (S.quit || S.over) return; S.quit = true; S.quitDay = S.day; S.urge = 100; closePanel();
+  if (H.pose === 'lie') standUp(); H.pose = 'cheer'; H.state = 'quitting'; sfx('win'); tie.visible = false; applyDecor();
+  say(H, '나 사표 냈어!!!! 📝 이제 자유다!!'); emote(H, 'shock', 3000); emote(W, 'shock', 3000); pose(W, 'sigh', 2500);
+  const p = H.headG.getWorldPosition(_v); burst(p.x, p.y + 0.4, p.z, 30, 0xffffff, 2.5, 0.2);
+  setTimeout(() => { H.pose = 'idle'; lieDown(); render();
+    showCard('<div class="em">📝</div><h2>남편이 사표를 냈어요!</h2><p>퇴사 욕구가 터졌어요. 이제부터 <b>백수 남편 모드</b>예요.</p><p>💡 부업을 키우면 <b>부부 창업</b>, 통장과 멘탈을 지키면 <b>쉬어가기</b>, 아무것도 안 하면… <b>퇴사 후 유튜버</b> 엔딩이 기다려요.</p><button class="primary" data-a="ok">어쩔 수 없지… 계속하기</button>', { ok: closeCard });
+  }, 2200);
+}
+const QUIT_ACTS = {
+  listen: { icon: '👂', name: '들어주기', run() {
+    if (!canAct()) return; S.ap--; render();
+    goHusband(() => { say(W, pick(['오늘 무슨 일 있었어? 다 말해 봐', '응응, 그래서? 다 들어 줄게', '당신 편이야, 무조건'])); pose(W, 'heart'); sfx('praise');
+      setTimeout(() => { hSay(pick(['…사실 오늘 진짜 힘들었어', '말하니까 좀 낫다', '여보밖에 없어'])); hFace('smile'); qd('mental', 12 * Math.pow(0.8, S.used.listen || 0), ' 멘탈'); S.used.listen = (S.used.listen || 0) + 1; if (!S.quit) setTimeout(() => qd('urge', -6, ' 퇴사 욕구', '#8fe3b8'), 250); setTimeout(render, 500); }, 700); }); } },
+  lunch: { icon: '🍱', name: '도시락', run() {
+    if (!canAct()) return; if (S.lunch) { toast('내일 도시락은 이미 싸 뒀어요'); return; } S.ap--; render(); closePanel();
+    walk(W, 4.2, -4.6, () => { faceTo(W, 4.2, -6); pose(W, 'work', 1500); sfx('water');
+      setTimeout(() => { S.lunch = true; qd('money', -1, '만 원', '#ff8a7a'); say(W, '내일 도시락 완성! 🍱 (쪽지도 넣었지롱)'); setTimeout(() => hSay('헐… 도시락?! 내일 출근할 맛 난다'), 900); qd('mental', 6, ' 멘탈'); render(); }, 1500); }); } },
+  treat: { icon: '🍖', name: '맛있는 거', run() {
+    if (!canAct()) return; S.ap--; render(); closePanel();
+    walk(W, 6.95, -4.35, () => { faceTo(W, 7.35, -5.5); pose(W, 'phone', 1500); say(W, '오늘 소고기 시켰다! 🍖');
+      setTimeout(() => { sfx('bell'); chickenBox.visible = true; burst(-4.15, 0.9, -0.65, 10, 0xffc070, 0.8); qd('mental', 15, ' 멘탈'); setTimeout(() => qd('money', -5, '만 원', '#ff8a7a'), 300); hSay('고기…?! 살아갈 힘이 생긴다 🥹'); render(); }, 1600); }); } },
+  budget: { icon: '📊', name: '가계부', run() {
+    if (!canAct()) return; S.ap--; render();
+    goHusband(() => { pose(W, 'photo', 1600); W.phone.visible = true; say(W, `우리 통장 ${S.money}만 원… 대출은 아직 이만큼 남았어`);
+      setTimeout(() => { W.phone.visible = false; hSay('…현실 직시 완료. 조금만 더 다녀 볼게'); hFace('sad', 2000); if (!S.quit) qd('urge', -15, ' 퇴사 욕구', '#8fe3b8'); qd('mental', -8, ' 멘탈'); if (S.quit) qd('money', 8, '만 원 (절약)', '#ffd23a'); render(); }, 1400); }); } },
+  side: { icon: '💡', name: '부업 응원', run() {
+    if (!canAct()) return; S.ap--; closePanel();
+    goHusband(() => { say(W, pick(['당신 하고 싶던 거 해 봐! 내가 응원할게', '그 빵 만들기 진짜 맛있었잖아!', '유튜브 편집 내가 도와줄게'])); busyDo('💡 부업 준비 중', done => {
+      standUp(); H.state = 'working'; hSay('진짜? 그럼 오늘 좀 해 볼까!');
+      walk(H, 12.5, -4.3, () => { H.root.position.set(12.5, 0, -4.35); H.root.rotation.y = Math.PI; H.pose = 'game'; sfx('scrub');
+        setTimeout(() => { uprightAt(12.5, -3.6); H.pose = 'cheer'; say(H, '오… 이거 될 것 같은데?! 💡'); qd('side', S.quit ? 22 : 15, ' 부업', '#9fd8ff'); setTimeout(() => qd('mental', 5, ' 멘탈'), 300);
+          setTimeout(() => { H.pose = 'idle'; walk(H, COUCH_SIDE[0], COUCH_SIDE[1], () => { lieDown(); done(); }); }, 1300); }, 2600); });
+    }); }); } },
+  trip: { icon: '✈️', name: '주말여행', run() {
+    if (!canAct()) return; if (S.tripped) { toast('주말여행은 이번 주에 이미 잡았어요 ✈️'); return; } S.ap--; S.tripped = true; render();
+    goHusband(() => { say(W, '이번 주말에 바다 보러 가자! 숙소 잡았어 ✈️'); pose(W, 'cheer'); sfx('win');
+      setTimeout(() => { hSay('바다?! 여보 사랑해 😭'); hFace('smile', 2500); qd('mental', 25, ' 멘탈'); if (!S.quit) setTimeout(() => qd('urge', -20, ' 퇴사 욕구', '#8fe3b8'), 250); setTimeout(() => qd('money', -40, '만 원', '#ff8a7a'), 500); const p = H.headG.getWorldPosition(_v); burst(p.x, p.y + 0.3, p.z, 16, 0x8ecfff, 1, 0.25); setTimeout(render, 700); }, 700); }); } }
+};
 // 집안일 시키기
 function command(c) {
   if (!canAct() || S.done[c.id]) return;
@@ -1070,12 +1202,23 @@ function endDay() {
   if (!S || S.over || ROLE === 'husband') return; if (S.busy) { toast('남편이 일 끝나면 하루를 마칠 수 있어요'); return; }
   closePanel(); let txt = S.day >= 7 ? '일주일이 지났어요…' : `${S.day}일차 끝 · 잘 자요 💤`;
   if (EP === 'drink') txt = drinkNight() + (S.day >= 7 ? '\n일주일이 지났어요…' : '');
-  night(txt, EP === 'drink' ? 2400 : 1600); net({ k: 'night', t: txt }); sfx('night');
-  setTimeout(() => { S.res = clamp(S.res - 15, 0, 100); if (drunkOn()) S.tomorrow = { ap: -1, mot: -10, msg: '🤢 어제 그냥 둬서 남편이 숙취로 골골… 행동력 -1, 의욕 -10' }; if (S.day >= 7) finish(); else { S.day++; startDay(); } }, EP === 'drink' ? 2000 : 1200);
+  if (EP === 'quit') txt = (S.quit ? `🛋️ 백수 ${S.day - S.quitDay + 1}일차 밤…\n통장 ${S.money}만 원` : `😮‍💨 ${S.day}일차도 버텼다!\n멘탈 ${Math.round(S.mental)}`) + (S.day >= 7 ? '\n일주일이 지났어요…' : '');
+  night(txt, EP !== 'sofa' ? 2400 : 1600); net({ k: 'night', t: txt }); sfx('night');
+  setTimeout(() => { S.res = clamp(S.res - 15, 0, 100); if (drunkOn()) S.tomorrow = { ap: -1, mot: -10, msg: '🤢 어제 그냥 둬서 남편이 숙취로 골골… 행동력 -1, 의욕 -10' }; if (S.day >= 7) finish(); else { S.day++; startDay(); } }, EP !== 'sofa' ? 2000 : 1200);
 }
 function night(t, ms = 1600) { $('night').textContent = t; $('night').classList.add('on'); setTimeout(() => $('night').classList.remove('on'), ms); }
 function finish() {
   S.over = true;
+  if (EP === 'quit') {
+    const m = Math.round(S.mental); S.hab = m;
+    if (!S.quit && S.offer && m >= 40) endGame('q_move', '🚀', '더 좋은 곳으로 이직!', `헤드헌터 제안을 잡았어요! 연봉도 오르고 칼퇴하는 회사로 이직 성공. 멘탈 ${m}, 통장 ${S.money}만 원. "여보 덕분이야" 소리 들었어요.`);
+    else if (!S.quit && m >= 50) endGame('q_stay', '🏢', '웃으며 출근', `"그만둘래"가 "다녀올게!"로 바뀌었어요. 멘탈 ${m}으로 일주일 버티기 성공! 힘들 땐 또 들어 주기로.`);
+    else if (!S.quit) endGame('q_burn', '😵', '번아웃 직장인', `그만두진 않았지만 멘탈 ${m}… 남편이 출근길에 영혼을 두고 가요. 들어 주기와 맛있는 거가 더 필요해요.`);
+    else if (S.side >= 70) endGame('q_startup', '💑', '부부 창업 대박!', `사표 내고 키운 부업(${Math.round(S.side)}%)으로 둘이 가게를 차렸어요. 오픈 첫날 줄이 섰어요! 통장 ${S.money}만 원.`);
+    else if (S.money >= 200 && m >= 60) endGame('q_rest', '🌴', '한 달 쉬어가기', `통장 ${S.money}만 원, 멘탈 ${m}. 한 달 푹 쉬고 더 잘 맞는 일을 찾기로 했어요. 쉼도 실력!`);
+    else endGame('q_youtube', '📹', '퇴사 후 유튜버 (구독자 12명)', `아무 준비 없이 퇴사하고 "퇴사 브이로그"를 시작했어요. 구독자 12명 중 5명이 가족… 통장 ${S.money}만 원. 부업 응원을 미리 해 둘걸!`);
+    return;
+  }
   if (EP === 'drink') {
     const n = S.cal.filter(Boolean).length; S.hab = Math.round(n / 7 * 100);
     if (n >= 7) endGame('d7', '🍀', '7일 금주 성공!', '일주일 내내 한 방울도 안 마셨어요! 남편 얼굴에 광이 나고 뱃살이 쏙 들어갔어요. 이제 맥주 대신 탄산수로 건배!');
@@ -1254,6 +1397,9 @@ function renderControls() {
   } else if (S && drunkOn()) {
     B.push(lbtn('🛌', H.state === 'out' ? '귀가 중…' : `재우기 ${S.drunk}%`, putToBed, { main: true, hot: S.drunk <= 40 && H.state === 'drunk', dis: S.over || H.state !== 'drunk' }));
     Object.entries(DRUNK_ACTS).forEach(([k, a]) => B.push(lbtn(a.icon, a.name.replace(' 스매싱', '').replace(' 벗기기', '').replace('증거 ', ''), () => a.run(), { dis: S.over || (k !== 'photo' && S.ap <= 0) || (k === 'photo' && S.photo) || (k === 'socks' && !S.socks) })));
+  } else if (S && EP === 'quit') {
+    B.push(lbtn('👂', '들어주기', () => QUIT_ACTS.listen.run(), { main: true, hot: S.mental < 35 && S.ap > 0, dis: S.over || S.ap <= 0 || S.busy }));
+    ['lunch', 'treat', 'budget', 'side', 'trip'].forEach(k => { const a = QUIT_ACTS[k]; B.push(lbtn(a.icon, a.name, () => a.run(), { dis: S.over || S.ap <= 0 || S.busy || (k === 'trip' && S.tripped) || (k === 'lunch' && S.lunch), hot: k === 'side' && S.quit })); });
   } else if (S && EP === 'drink') {
     B.push(lbtn('🥤', '탄산수', () => DRINK_ACTS.soda.run(), { main: true, hot: S.crave >= 60 && S.ap > 0, dis: S.over || S.ap <= 0 || S.busy || S.midnight }));
     ['praise', 'nag', 'hide', 'walk', 'gym'].forEach(k => { const a = DRINK_ACTS[k]; B.push(lbtn(a.icon, a.name.replace('같이 ', '').replace('술 ', ''), () => a.run(), { dis: S.over || S.ap <= 0 || S.busy || S.midnight || (k === 'hide' && S.hidden) })); });
@@ -1272,7 +1418,8 @@ function stateText() {
   if (drunkOn()) return H.state === 'out' ? '🚪 귀가 중…' : `🍺 만취 ${S.drunk}%`;
   if (S.slept) return '💤 꿀잠 중';
   if (H.state === 'gifting') return '🎁 뭔가 준비 중…';
-  if (EP === 'drink' && S.busyLabel) return S.busyLabel;
+  if (EP !== 'sofa' && S.busyLabel) return S.busyLabel;
+  if (EP === 'quit') { if (H.state === 'commute') return '🚇 퇴근 중…'; if (S.quit) return `🛋️ 백수 ${S.day - S.quitDay + 1}일차`; if (S.story) return '💬 하소연 중…'; return S.urge >= 80 ? '📝 사직서 쓰는 중…' : S.urge >= 50 ? '😩 그만둘까 고민 중' : '🙂 그럭저럭 버티는 중'; }
   if (H.state === 'hiding') return H.hide ? H.hide.label : '🫣 숨어 있음';
   if (H.state === 'sneaking') return '🤫 슬금슬금';
   if (H.state === 'leaving') return '💢 가출 중';
@@ -1294,6 +1441,12 @@ function renderBars() {
     L('l2', '술 생각'); $('res').style.width = S.crave + '%'; $('resV').textContent = Math.round(S.crave); $('res').style.background = S.crave >= 80 ? '#ef4a4a' : '#ff9a4a';
     L('l3', '금주'); $('hab').style.width = (n / 7 * 100) + '%'; $('habV').textContent = `${n}/7`;
     $('calRow').classList.add('show'); $('calRow').innerHTML = Array.from({ length: 7 }, (_, i) => `<i class="${S.cal[i] === 1 ? 'ok' : S.cal[i] === 0 ? 'no' : ''}${i === S.day - 1 && !S.over ? ' today' : ''}">${S.cal[i] === 1 ? '✓' : S.cal[i] === 0 ? '✕' : i + 1}</i>`).join('');
+  } else if (EP === 'quit') {
+    $('dayTxt').textContent = `${S.day}일차${S.quit ? ' · 백수' : ''}`;
+    L('l1', '멘탈'); $('mot').style.width = S.mental + '%'; $('motV').textContent = Math.round(S.mental); $('mot').style.background = S.mental < 30 ? '#ef6a5a' : '#5fd38d';
+    L('l2', S.quit ? '부업' : '퇴사욕구'); const u = S.quit ? S.side : S.urge; $('res').style.width = u + '%'; $('resV').textContent = Math.round(u); $('res').style.background = S.quit ? '#4fb8ff' : u >= 80 ? '#ef4a4a' : '#ff9a4a';
+    L('l3', '통장'); $('hab').style.width = Math.min(100, S.money / 6) + '%'; $('habV').textContent = `${S.money}만`;
+    $('calRow').classList.remove('show');
   } else {
     $('dayTxt').textContent = `${S.day}일차 / 7`;
     L('l1', '의욕'); L('l2', '반발'); L('l3', '개조'); $('mot').style.background = '#5fd38d'; $('res').style.background = '#ef6a5a'; $('calRow').classList.remove('show');
@@ -1301,6 +1454,7 @@ function renderBars() {
   }
   HL.state.textContent = stateText();
   if (drunkOn()) { HL.bar.style.width = S.drunk + '%'; HL.num.textContent = '🍺' + S.drunk; HL.bar.style.background = '#ff9a4a'; }
+  else if (EP === 'quit') { HL.bar.style.width = S.mental + '%'; HL.num.textContent = '🧠' + Math.round(S.mental); HL.bar.style.background = S.mental < 30 ? '#ef6a5a' : '#5fd38d'; }
   else if (EP === 'drink') { HL.bar.style.width = S.crave + '%'; HL.num.textContent = '🍺' + Math.round(S.crave); HL.bar.style.background = S.crave >= 80 ? '#ef4a4a' : '#ff9a4a'; }
   else { HL.bar.style.width = S.mot + '%'; HL.num.textContent = S.mot; HL.bar.style.background = S.res >= 70 ? '#ef6a5a' : '#5fd38d'; }
 }
@@ -1335,7 +1489,11 @@ const HELP2 = `<p>🍺 매일 저녁 6시부터 자정까지, 남편의 <b>술 �
 <p>🥤 탄산수, 🫙 술 숨기기, 🚶 같이 산책, 💪 홈트로 술 생각을 낮추고, 💬 칭찬으로 <b>참을성</b>을 키우면 술 생각이 천천히 올라요. 📢 잔소리는 스트레스라 오히려 술 생각이 올라요.</p>
 <p>🌙 를 일찍 누르면 남은 시간 동안 올라갈 술 생각까지 계산해요. 100을 넘으면 밤에 몰래 편의점행…</p>
 <p>🏪 못 참고 마시면 취해서 돌아와요. 꿀물·양말 벗기기로 재우면 다음 날 반성해서 참을성이 올라요.</p>`;
-function helpText() { return EP === 'drink' ? HELP2 : HELP; }
+const HELP3 = `<p>💼 매일 저녁 남편이 퇴근하며 <b>회사 이야기</b>를 털어놔요. 어떻게 대답하느냐에 따라 <b>멘탈</b>과 <b>퇴사 욕구</b>가 바뀌어요.</p>
+<p>👂 들어주기, 🍱 도시락, 🍖 맛있는 거, ✈️ 주말여행은 멘탈을 올리고, 📊 가계부는 퇴사 욕구를 확 낮추지만 멘탈이 깎여요. 💡 부업 응원은 부업을 키워요.</p>
+<p>📝 퇴사 욕구가 100이 되면 남편이 진짜 <b>사표</b>를 내고 백수 모드가 돼요. 수입이 없어서 통장이 줄어요!</p>
+<p>🏁 엔딩: 안 그만두면 <b>웃으며 출근 / 번아웃</b>, 헤드헌터 제안을 잡고 멘탈을 지키면 <b>이직</b>, 사표 낸 뒤엔 부업에 따라 <b>부부 창업 / 쉬어가기 / 퇴사 후 유튜버</b>.</p>`;
+function helpText() { return EP === 'drink' ? HELP2 : EP === 'quit' ? HELP3 : HELP; }
 let chosenPers = 'lazy';
 function openStart(err) {
   netClosing = true; if (ws) { try { ws.close(); } catch {} } ws = null; roomCode = null; peerOn = false; netClosing = false;
@@ -1418,11 +1576,11 @@ async function shareResult(title) {
   const sr = src.width / src.height, dr = W0 / H0; let sw = src.width, sh = src.height, sx = 0, sy = 0; if (sr > dr) { sw = sh * dr; sx = (src.width - sw) / 2; } else { sh = sw / dr; sy = (src.height - sh) / 2; }
   g.drawImage(src, sx, sy, sw, sh, 0, 0, W0, H0);
   const gr = g.createLinearGradient(0, H0 * 0.45, 0, H0); gr.addColorStop(0, 'rgba(8,9,14,0)'); gr.addColorStop(1, 'rgba(8,9,14,.92)'); g.fillStyle = gr; g.fillRect(0, 0, W0, H0);
-  g.fillStyle = 'rgba(8,9,14,.75)'; g.fillRect(0, 0, W0, 92); g.fillStyle = '#fff'; g.font = '34px "Gowun Dodum", sans-serif'; g.textAlign = 'left'; g.fillText(EP === 'drink' ? '🍺 술고래 남편 개조' : '🛋️ 남편 개조 프로젝트', 30, 58);
+  g.fillStyle = 'rgba(8,9,14,.75)'; g.fillRect(0, 0, W0, 92); g.fillStyle = '#fff'; g.font = '34px "Gowun Dodum", sans-serif'; g.textAlign = 'left'; g.fillText(EP === 'drink' ? '🍺 술고래 남편 개조' : EP === 'quit' ? '💼 회사 때려치겠다는 남편' : '🛋️ 남편 개조 프로젝트', 30, 58);
   g.textAlign = 'center'; g.font = '30px "Gowun Dodum", sans-serif'; g.fillStyle = '#e9c46a'; g.fillText(title || (S ? `${S.day}일차 진행 중` : ''), W0 / 2, H0 - 210);
-  g.fillStyle = '#fff'; g.font = '84px "Gowun Dodum", sans-serif'; g.fillText(EP === 'drink' && S ? `금주 ${S.cal.filter(Boolean).length}/7일` : `개조율 ${S ? S.hab : 0}%`, W0 / 2, H0 - 115);
+  g.fillStyle = '#fff'; g.font = '84px "Gowun Dodum", sans-serif'; g.fillText(EP === 'drink' && S ? `금주 ${S.cal.filter(Boolean).length}/7일` : EP === 'quit' && S ? `멘탈 ${Math.round(S.mental)}` : `개조율 ${S ? S.hab : 0}%`, W0 / 2, H0 - 115);
   g.font = '24px "Gowun Dodum", sans-serif'; g.fillStyle = '#9aa3bd'; g.fillText(`${S ? PERS[S.pers].name : ''} · ${location.host}/house`, W0 / 2, H0 - 55);
-  const url = `${location.origin}/house/`, text = EP === 'drink' && S ? `우리 남편 금주 ${S.cal.filter(Boolean).length}/7일! ${title || ''} 🍺 너희 남편도 개조해 봐` : `우리 남편 개조율 ${S ? S.hab : 0}%! ${title || ''} 🛋️ 너희 남편도 개조해 봐`;
+  const url = `${location.origin}/house/`, text = EP === 'quit' && S ? `우리 남편 회사 그만둔다는 거 막았다(?) 멘탈 ${Math.round(S.mental)}! ${title || ''} 💼 너희 남편도 개조해 봐` : EP === 'drink' && S ? `우리 남편 금주 ${S.cal.filter(Boolean).length}/7일! ${title || ''} 🍺 너희 남편도 개조해 봐` : `우리 남편 개조율 ${S ? S.hab : 0}%! ${title || ''} 🛋️ 너희 남편도 개조해 봐`;
   const blob = await new Promise(r => c.toBlob(r, 'image/png'));
   try { const file = new File([blob], 'husband.png', { type: 'image/png' }); if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], text: text + ' ' + url }); return; } } catch (e) { if (e && e.name === 'AbortError') return; }
   const dataUrl = c.toDataURL('image/png');
