@@ -182,6 +182,22 @@ button{font:inherit;color:inherit;cursor:pointer}
 .tag .state{font-size:12.5px;padding:3px 9px}
 .tag .bubble{font-size:13.5px;max-width:190px;padding:6px 10px}
 .float{font-size:16px}
+#tut{position:fixed;inset:0;z-index:12;display:none}
+#tut.on{display:block}
+#tut .hole{position:absolute;border-radius:14px;box-shadow:0 0 0 9999px rgba(5,6,12,.74);transition:all .3s;pointer-events:none;outline:2px solid #ffd23a;outline-offset:3px}
+#tut .tip{position:absolute;left:16px;right:16px;max-width:360px;margin:0 auto;background:#fffaf0;color:#231c16;border-radius:16px;padding:14px 14px 10px;box-shadow:0 10px 30px rgba(0,0,0,.5);transition:top .3s}
+#tut .tt{font-size:15px;line-height:1.55;font-weight:700}
+#tut .tt small{display:block;font-weight:500;color:#6a5a4a;font-size:13px;margin-top:4px}
+#tut .tb{display:flex;justify-content:space-between;align-items:center;margin-top:10px}
+#tut .tb button{border:0;border-radius:10px;padding:8px 14px;font-weight:700;font-size:14px}
+#tut .skip{background:transparent;color:#8a7a6a}
+#tut .next{background:linear-gradient(180deg,#f0b057,#d9822e);color:#2a1406}
+.qz{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.qz button{border:0;border-radius:13px;padding:13px 12px;background:rgba(255,255,255,.07);color:#fff;font-size:15px;font-weight:700;text-align:left}
+.qz button:active{background:rgba(255,154,74,.25)}
+.qbar{height:6px;border-radius:4px;background:rgba(255,255,255,.1);overflow:hidden;margin:4px 0 12px}.qbar b{display:block;height:100%;background:linear-gradient(90deg,#f0b057,#ff7a9a)}
+.qres{display:flex;flex-direction:column;gap:6px;margin:10px 0}
+.qres div{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:700}.qres i{flex:1;height:10px;border-radius:6px;background:rgba(255,255,255,.08);overflow:hidden;font-style:normal}.qres i b{display:block;height:100%;background:#f0b057}
 </style>
 </head>
 <body>
@@ -213,6 +229,8 @@ button{font:inherit;color:inherit;cursor:pointer}
   <button id="viewBtn">👁️ 집 전체 보기</button>
   <button id="soundBtn"><svg viewBox="0 0 24 24" id="soundIco"></svg><span>소리 켜기/끄기</span></button>
   <button id="statsBtn">👥 접속자 현황</button>
+  <button id="quizBtn">🧪 남편 유형 테스트</button>
+  <button id="tutBtn">🎓 튜토리얼 다시 보기</button>
 </div>
 
 <div class="bpanel pn" id="bpanel"></div>
@@ -220,6 +238,7 @@ button{font:inherit;color:inherit;cursor:pointer}
 
 <div class="toast pn" id="toast"></div>
 <div id="night"></div>
+<div id="tut"><div class="hole"></div><div class="tip"><div class="tt"></div><div class="tb"><button class="skip">건너뛰기</button><button class="next">다음</button></div></div></div>
 <div id="flash"></div>
 <div class="overlay" id="modal"><div class="card" id="modalCard"></div></div>
 

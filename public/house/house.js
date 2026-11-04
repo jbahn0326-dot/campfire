@@ -619,6 +619,7 @@ function pm(k, d = 1) { const m = PERS[S.pers].m; return (m[k] ?? d) * (m.all &&
 function newGame(pers) {
   S = { day: 1, ap: AP_MAX, mot: 15, res: 5, hab: 0, used: {}, habit: {}, mod: {}, done: {}, tvOff: false, together: false, tv: false, over: false, busy: false, pers, extra: null, chickens: 0, selfCount: 0, pending: null, accepted: null, stage: 0, ending: null, gifted: {}, ep: EP, crave: 35, will: 15, cal: [], clock: 0, hidden: false, tempt: null, relapsed: false, workouts: 0, mental: 45, urge: 30, money: 300, side: 0, quit: false, offer: false, quitDay: 0, storyUsed: [], tripped: false };
   applyPers(); applyDecor(); H.root.visible = true; setGloves(H, false); updateOutfit(true); startDay(true);
+  if (ROLE !== 'husband') tutorialWhenReady();
 }
 function applyPers() { const P = PERS[S.pers]; H.headG.children.forEach(m => { if (m.material === undefined) return; }); hairColor(H, P.hair); setTags(); }
 function hairColor(ch, c) { ch.headG.traverse(m => { if (m.isMesh && m.material && m.material.color && m.material.userData.hair) m.material.color.set(c); }); }
@@ -949,7 +950,7 @@ function relapse() {
   render();
 }
 function drinkTick(dt) {
-  if (EP !== 'drink' || !S || S.over || ROLE === 'husband' || S.relapsed || drunkOn() || S.slept || S.midnight) return;
+  if (EP !== 'drink' || !S || S.over || ROLE === 'husband' || S.relapsed || drunkOn() || S.slept || S.midnight || tutOn) return;
   S.clock = Math.min(DAY_LEN, S.clock + dt);
   if (S.clock >= DAY_LEN) { S.midnight = true; S.tempt = null; closePanel(); H.sub = 'snore'; H.idleT = 999; say(H, '💤', true, 4000); toast('🕛 자정! 남편이 잠들었어요. 🌙 를 눌러 금주 도장을 받아요', 4500); render(); return; }
   if (!S.busy) S.crave = clamp(S.crave + craveRate() * dt, 0, 100);
@@ -1505,9 +1506,10 @@ function openStart(err) {
   const got = store.get('endings', []);
   const eps = Object.entries(EPISODES).map(([k, e]) => { const n = ENDINGS.filter(x => (x.ep || 'sofa') === k && got.includes(x.id)).length, tot = ENDINGS.filter(x => (x.ep || 'sofa') === k).length;
     return `<button class="pick ep" data-a="ep_${k}" ${e.locked ? 'disabled' : ''}><div class="i">${e.icon}</div><div><b>${e.no}화 · ${e.name}</b><small>${e.locked ? '🔒 공개 예정' : `${e.desc} · 엔딩 ${n}/${tot}`}</small></div></button>`; }).join('');
-  const acts = { book: openBook, decor: () => openDecor(true), help: () => showCard(`<div class="em">❓</div><h2>하는 법</h2>${helpText()}<button class="primary" data-a="back">알겠어요</button>`, { back: () => openStart() }) };
+  const acts = { quiz: () => openQuiz(), book: openBook, decor: () => openDecor(true), help: () => showCard(`<div class="em">❓</div><h2>하는 법</h2>${helpText()}<button class="primary" data-a="back">알겠어요</button>`, { back: () => openStart() }) };
   Object.keys(EPISODES).forEach(k => acts['ep_' + k] = () => openEpisode(k));
   showCard(`<div class="em">🛋️</div><h2>남편 개조 시리즈</h2>${err ? `<p style="color:#ffb0a0">${err}</p>` : ''}<p>오늘은 어떤 남편을 개조할까요?</p><div class="eps">${eps}</div>
+    <button class="ghost" data-a="quiz" style="border-color:rgba(255,210,58,.5);color:#ffe08a">🧪 우리 남편은 무슨 유형? 테스트하기</button>
     <div class="grid2"><button class="ghost" data-a="book" style="margin:0">📖 엔딩 도감</button><button class="ghost" data-a="decor" style="margin:0">🎨 꾸미기</button></div>
     <button class="ghost" data-a="help">❓ 하는 법</button><a href="/" style="display:block;margin-top:12px;color:var(--dim);font-size:13px">🔥 모닥불 캠핑장으로 놀러 가기</a>`, acts);
 }
@@ -1569,24 +1571,141 @@ function openDecor(fromStart) {
   ['sofa', 'wall', 'pj'].forEach(k => DECOR[k].forEach((_, i) => acts[`${k}_${i}`] = () => { if (ROLE === 'husband') { toast('꾸미기는 아내가 해요'); return; } decor[k] = i; store.set('decor', decor); applyDecor(); syncNow(); openDecor(fromStart); }));
   showCard(`<div class="em">🎨</div><h2>꾸미기</h2><p>엔딩 ${n}개 모음 · 엔딩을 더 모으면 잠긴 것도 열려요.</p>${row('sofa', DECOR.sofa, it => hex(it[0]))}${row('wall', DECOR.wall, it => `linear-gradient(90deg,${it[0]} 50%,${it[1]} 50%)`)}${row('pj', DECOR.pj, it => hex(it[0]))}<button class="primary" data-a="close">닫기</button>`, acts);
 }
-// 결과 공유 (화면 + 글씨 → 이미지)
-async function shareResult(title) {
-  composer.render();
-  const src = renderer.domElement, W0 = 720, H0 = 960, c = document.createElement('canvas'); c.width = W0; c.height = H0; const g = c.getContext('2d');
-  const sr = src.width / src.height, dr = W0 / H0; let sw = src.width, sh = src.height, sx = 0, sy = 0; if (sr > dr) { sw = sh * dr; sx = (src.width - sw) / 2; } else { sh = sw / dr; sy = (src.height - sh) / 2; }
-  g.drawImage(src, sx, sy, sw, sh, 0, 0, W0, H0);
-  const gr = g.createLinearGradient(0, H0 * 0.45, 0, H0); gr.addColorStop(0, 'rgba(8,9,14,0)'); gr.addColorStop(1, 'rgba(8,9,14,.92)'); g.fillStyle = gr; g.fillRect(0, 0, W0, H0);
-  g.fillStyle = 'rgba(8,9,14,.75)'; g.fillRect(0, 0, W0, 92); g.fillStyle = '#fff'; g.font = '34px "Gowun Dodum", sans-serif'; g.textAlign = 'left'; g.fillText(EP === 'drink' ? '🍺 술고래 남편 개조' : EP === 'quit' ? '💼 회사 때려치겠다는 남편' : '🛋️ 남편 개조 프로젝트', 30, 58);
-  g.textAlign = 'center'; g.font = '30px "Gowun Dodum", sans-serif'; g.fillStyle = '#e9c46a'; g.fillText(title || (S ? `${S.day}일차 진행 중` : ''), W0 / 2, H0 - 210);
-  g.fillStyle = '#fff'; g.font = '84px "Gowun Dodum", sans-serif'; g.fillText(EP === 'drink' && S ? `금주 ${S.cal.filter(Boolean).length}/7일` : EP === 'quit' && S ? `멘탈 ${Math.round(S.mental)}` : `개조율 ${S ? S.hab : 0}%`, W0 / 2, H0 - 115);
-  g.font = '24px "Gowun Dodum", sans-serif'; g.fillStyle = '#9aa3bd'; g.fillText(`${S ? PERS[S.pers].name : ''} · ${location.host}/house`, W0 / 2, H0 - 55);
-  const url = `${location.origin}/house/`, text = EP === 'quit' && S ? `우리 남편 회사 그만둔다는 거 막았다(?) 멘탈 ${Math.round(S.mental)}! ${title || ''} 💼 너희 남편도 개조해 봐` : EP === 'drink' && S ? `우리 남편 금주 ${S.cal.filter(Boolean).length}/7일! ${title || ''} 🍺 너희 남편도 개조해 봐` : `우리 남편 개조율 ${S ? S.hab : 0}%! ${title || ''} 🛋️ 너희 남편도 개조해 봐`;
+// 결과 공유: 엔딩별 전용 카드 이미지 (인스타 4:5) + 친구 태그 유도
+const QUIPS = {
+  legend: '남편이 퇴근하자마자 고무장갑부터 낍니다 🧤', speed: '5일 만에 개조 완료. 이 정도면 마법 아님?', couple: '둘이 같이 하니까 집이 반짝반짝 ✨',
+  almost: '시키면 군말 없이 함. 스스로 하는 날도 머지않음', half: '설거지까진 함. 화장실은… 미지의 영역', sofa: '일주일 지났는데 여전히 소파와 한 몸 🛋️',
+  runaway: '잔소리 폭발 → 남편 PC방 가출 🏃💨', chicken: '치킨으로 키운 남편 🍗 (효과는 확실)', self: '시키지도 않았는데 스스로 함?! 🥹', drunk: '꿀물 타 주고 양말 벗겨서 재움 🍯',
+  d7: '7일 동안 한 방울도 안 마심 🍀 얼굴에서 광이 남', d5: '딱 한두 번 무너졌지만 이 정도면 대단 😌', d3: '반은 참았다… 반은 편의점 🏪', dwhale: '여전히 바다를 헤엄치는 술고래 🐳', dgym: '맥주 대신 스쿼트에 중독됨 💪',
+  q_stay: '"그만둘래"가 "다녀올게!"로 바뀜 🏢', q_burn: '출근길에 영혼을 두고 감… 😵', q_move: '헤드헌터 잡고 연봉 올려서 이직 성공 🚀', q_startup: '사표 내고 둘이 가게 차림. 오픈 첫날 줄 섬 💑', q_rest: '한 달 푹 쉬고 다시 시작하기로 🌴', q_youtube: '퇴사 브이로그 구독자 12명 (5명은 가족) 📹'
+};
+const EP_COLORS = { sofa: ['#3a2350', '#0f1020', '#ffd23a'], drink: ['#4a2a10', '#110b07', '#ffb347'], quit: ['#123048', '#080e16', '#7fd4ff'] };
+function statLine() { if (!S) return ''; if (EP === 'drink') return `금주 ${S.cal.filter(Boolean).length} / 7일`; if (EP === 'quit') return `멘탈 ${Math.round(S.mental)} · 통장 ${S.money}만 원`; return `개조율 ${S.hab}%`; }
+function wrapText(g, text, x, y, maxW, lh, maxLines = 2) {
+  const words = String(text).split(''); let line = '', lines = [];
+  for (const ch of words) { const t = line + ch; if (g.measureText(t).width > maxW && line) { lines.push(line); line = ch; } else line = t; }
+  if (line) lines.push(line); lines = lines.slice(0, maxLines); lines.forEach((l, i) => g.fillText(l, x, y + i * lh)); return lines.length;
+}
+function roundRect(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+async function makeCard({ ep, emoji, title, stat, quip, shot = true, tag }) {
+  try { await document.fonts.load('900 60px "Noto Sans KR"'); await document.fonts.load('500 30px "Noto Sans KR"'); } catch {}
+  const W0 = 1080, H0 = 1350, c = document.createElement('canvas'); c.width = W0; c.height = H0; const g = c.getContext('2d');
+  const [c1, c2, acc] = EP_COLORS[ep] || EP_COLORS.sofa, E = EPISODES[ep] || EPISODES.sofa;
+  const gr = g.createLinearGradient(0, 0, 0, H0); gr.addColorStop(0, c1); gr.addColorStop(1, c2); g.fillStyle = gr; g.fillRect(0, 0, W0, H0);
+  for (let i = 0; i < 40; i++) { g.fillStyle = `rgba(255,255,255,${Math.random() * 0.06})`; g.beginPath(); g.arc(Math.random() * W0, Math.random() * H0, Math.random() * 60, 0, 7); g.fill(); }
+  g.textAlign = 'center'; g.fillStyle = 'rgba(255,255,255,.12)'; roundRect(g, 240, 56, 600, 70, 35); g.fill();
+  g.fillStyle = '#fff'; g.font = '700 34px "Noto Sans KR", sans-serif'; g.fillText(tag || `남편 개조 시리즈 · ${E.no}화 ${E.name}`, W0 / 2, 103);
+  let y = 170;
+  if (shot) {
+    composer.render(); const src = renderer.domElement, fw = 920, fh = 520, fx = (W0 - fw) / 2;
+    const sr = src.width / src.height, dr = fw / fh; let sw = src.width, sh = src.height, sx = 0, sy = 0; if (sr > dr) { sw = sh * dr; sx = (src.width - sw) / 2; } else { sh = sw / dr; sy = (src.height - sh) * 0.42; }
+    g.save(); roundRect(g, fx, y, fw, fh, 36); g.clip(); g.drawImage(src, sx, sy, sw, sh, fx, y, fw, fh); g.restore();
+    g.strokeStyle = 'rgba(255,255,255,.18)'; g.lineWidth = 4; roundRect(g, fx, y, fw, fh, 36); g.stroke(); y += fh;
+  } else y += 330;
+  g.fillStyle = acc; g.beginPath(); g.arc(W0 / 2, y, 92, 0, 7); g.fill(); g.fillStyle = c2; g.beginPath(); g.arc(W0 / 2, y, 82, 0, 7); g.fill();
+  g.font = '110px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif'; g.fillText(emoji, W0 / 2, y + 38);
+  y += 175; g.fillStyle = '#fff'; g.font = '900 76px "Noto Sans KR", sans-serif'; wrapText(g, title, W0 / 2, y, 960, 86, 1);
+  y += 78; g.fillStyle = acc; g.font = '900 50px "Noto Sans KR", sans-serif'; g.fillText(stat || '', W0 / 2, y);
+  y += 70; g.fillStyle = 'rgba(255,255,255,.82)'; g.font = '500 38px "Noto Sans KR", sans-serif'; const n = wrapText(g, quip || '', W0 / 2, y, 900, 52, 2);
+  g.fillStyle = 'rgba(0,0,0,.35)'; g.fillRect(0, H0 - 170, W0, 170);
+  g.fillStyle = '#fff'; g.font = '900 42px "Noto Sans KR", sans-serif'; g.fillText('👇 너희 남편은? 친구 태그해서 시켜 봐!', W0 / 2, H0 - 98);
+  g.fillStyle = 'rgba(255,255,255,.6)'; g.font = '500 30px "Noto Sans KR", sans-serif'; g.fillText(`${location.host}/house`, W0 / 2, H0 - 48);
+  return c;
+}
+async function shareCanvas(c, text, url) {
   const blob = await new Promise(r => c.toBlob(r, 'image/png'));
   try { const file = new File([blob], 'husband.png', { type: 'image/png' }); if (navigator.canShare && navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], text: text + ' ' + url }); return; } } catch (e) { if (e && e.name === 'AbortError') return; }
-  const dataUrl = c.toDataURL('image/png');
-  showCard(`<div class="em">📤</div><h2>결과 공유</h2><p>이미지를 길게 눌러 저장한 뒤 인스타·카톡에 올려요.</p><img id="shareImg" src="${dataUrl}"><button class="primary" data-a="copy">글과 링크 복사</button><button class="ghost" data-a="close">닫기</button>`,
-    { copy: b => copyText(text + ' ' + url, b), close: () => { if (S && S.over) closeCard(); else closeCard(); } });
+  showCard(`<div class="em">📤</div><h2>결과 카드</h2><p>이미지를 길게 눌러 저장한 뒤 인스타·카톡에 올리고 친구를 태그해요!</p><img id="shareImg" src="${c.toDataURL('image/png')}"><button class="primary" data-a="copy">글과 링크 복사</button><button class="ghost" data-a="close">닫기</button>`,
+    { copy: b => copyText(text + ' ' + url, b), close: closeCard });
 }
+async function shareResult(title) {
+  const e = S && S.ending ? ENDINGS.find(x => x.id === S.ending) : null, E = EPISODES[EP];
+  const card = await makeCard({ ep: EP, emoji: e ? e.icon : E.icon, title: e ? (title || e.name) : (title || `${S ? S.day : 1}일차 개조 중…`), stat: statLine(), quip: e ? (QUIPS[e.id] || e.hint) : '아직 개조 중! 결과는 곧 공개 🔥' });
+  const url = `${location.origin}/house/`;
+  const text = `[남편 개조 시리즈 ${E.no}화] 우리 남편 결과: ${e ? e.icon + ' ' + (title || e.name) : '개조 중'} · ${statLine()}\n너희 남편은 몇 % 개조될까? 친구 태그해 봐 👇\n#남편개조 #부부게임 #부부스타그램 #공감`;
+  shareCanvas(card, text, url);
+}
+
+// =====================================================================
+// 🧪 우리 남편 유형 테스트 (5문항 → 맞는 에피소드로 연결)
+// =====================================================================
+const QUIZ = [
+  { q: '퇴근한 남편의 첫 행동은?', a: [['🛋️ 바로 소파에 눕는다', 'sofa'], ['🍺 냉장고에서 맥주부터 꺼낸다', 'drink'], ['😮‍💨 "아 회사 진짜…" 한숨부터', 'quit']] },
+  { q: '주말 남편의 모습은?', a: [['📺 리모컨과 한 몸', 'sofa'], ['🍻 친구들과 한잔 약속', 'drink'], ['😰 일요일 밤마다 출근 걱정', 'quit']] },
+  { q: '집안일 좀 해 달라고 하면?', a: [['🙃 "이따 할게~"', 'sofa'], ['🥴 "어제 회식이라 피곤해…"', 'drink'], ['🫠 "회사에서 영혼이 다 털렸어"', 'quit']] },
+  { q: '남편 폰에서 제일 많이 보이는 화면은?', a: [['📱 쇼츠·게임', 'sofa'], ['💬 단톡방 "오늘 한잔?"', 'drink'], ['🔎 채용 사이트', 'quit']] },
+  { q: '남편의 입버릇은?', a: [['😪 "좀만 쉬고"', 'sofa'], ['🍶 "딱 한 잔만"', 'drink'], ['🎰 "로또 되면 그만둔다"', 'quit']] }
+];
+const QTYPE = {
+  sofa: { icon: '🛋️', name: '소파 일체형 남편', desc: '집에 오면 소파와 합체! 리모컨은 몸의 일부. 칭찬 2번이면 움직이는 타입이에요.' },
+  drink: { icon: '🍺', name: '술고래 남편', desc: '"딱 한 잔만"이 다섯 잔 되는 타입. 탄산수와 산책으로 바꿔치기가 필요해요.' },
+  quit: { icon: '💼', name: '회사 때려치겠다는 남편', desc: '매일 밤 사직서를 마음속으로 써요. 들어 주기와 맛있는 거가 특효약!' }
+};
+function openQuiz(i = 0, sc = { sofa: 0, drink: 0, quit: 0 }) {
+  if (i >= QUIZ.length) return quizResult(sc);
+  const Q = QUIZ[i], acts = { back: () => openStart() };
+  Q.a.forEach(([, t], k) => acts['a' + k] = () => { sc[t]++; openQuiz(i + 1, sc); });
+  showCard(`<div class="em">🧪</div><h2>우리 남편 유형 테스트</h2><div class="qbar"><b style="width:${(i / QUIZ.length) * 100}%"></b></div><p style="text-align:center"><b>Q${i + 1}. ${Q.q}</b></p><div class="qz">${Q.a.map(([l], k) => `<button data-a="a${k}">${l}</button>`).join('')}</div><button class="ghost" data-a="back">처음으로</button>`, acts);
+}
+function quizResult(sc) {
+  const tot = Object.values(sc).reduce((a, b) => a + b, 0) || 1, best = Object.keys(sc).sort((a, b) => sc[b] - sc[a])[0], T = QTYPE[best], E = EPISODES[best];
+  store.set('quizType', best);
+  const bars = Object.keys(QTYPE).map(k => `<div><span>${QTYPE[k].icon}</span><i><b style="width:${Math.round(sc[k] / tot * 100)}%"></b></i><span>${Math.round(sc[k] / tot * 100)}%</span></div>`).join('');
+  showCard(`<div class="em">${T.icon}</div><h2>우리 남편은<br>${T.name}!</h2><p>${T.desc}</p><div class="qres">${bars}</div>
+    <button class="primary" data-a="go">${E.icon} ${E.no}화에서 개조하러 가기</button><button class="ghost" data-a="share">📤 결과 공유하고 친구 태그하기</button><button class="ghost" data-a="again">다시 하기</button>`,
+    { go: () => { EP = best; openEpisode(best); }, again: () => openQuiz(), share: async () => {
+      const pct = Math.round(sc[best] / tot * 100);
+      const card = await makeCard({ ep: best, emoji: T.icon, title: T.name, stat: `${pct}% 일치`, quip: T.desc, shot: false, tag: '🧪 우리 남편 유형 테스트' });
+      shareCanvas(card, `우리 남편은 ${T.icon} ${T.name} (${pct}%) ㅋㅋㅋ\n너희 남편은 무슨 유형이야? 친구 태그해서 해 봐 👇\n#남편유형테스트 #남편개조 #부부스타그램`, `${location.origin}/house/?quiz=1`);
+    } });
+}
+
+// =====================================================================
+// 🎓 첫 판 튜토리얼 (버튼을 짚어 주는 안내)
+// =====================================================================
+let tutOn = false;
+const abarBtn = i => () => document.querySelectorAll('#lcol .lb')[i];
+const TUTS = {
+  sofa: [
+    [() => $('apBox').closest('.card0'), '여기서 남편 <b>의욕·반발심·개조율</b>과 내 에너지(⚡)를 봐요', '개조율 100%가 되면 개조 완료!'],
+    [abarBtn(1), '💬 <b>칭찬</b>하면 아내가 남편에게 걸어가서 의욕을 올려요', '연달아 쓰면 효과가 줄어요. 잔소리는 반발심 주의!'],
+    [abarBtn(0), '의욕이 차면 🧹 <b>시키기</b>가 반짝여요', '그때 집안일을 고르면 남편이 직접 걸어가서 해요'],
+    [() => $('endBtn'), '에너지를 다 쓰면 🌙 로 <b>하루를 마쳐요</b>', '7일 안에 개조 완료가 목표!'],
+    [() => $('menuBtn'), '도움말·엔딩 도감·꾸미기·공유는 여기 ☰ 메뉴에 있어요', '그럼 개조 시작! 🛠️']
+  ],
+  drink: [
+    [() => $('apBox').closest('.card0'), '저녁 6시~자정까지 <b>술 생각</b>이 100을 넘지 않게 지켜요', '버티면 아래 금주 달력에 ✅ 도장!'],
+    [abarBtn(0), '🥤 <b>탄산수</b>로 맥주를 바꿔치기하면 술 생각이 확 내려가요', '🫙 술 숨기기, 🚶 산책, 💪 홈트도 효과 만점'],
+    [abarBtn(1), '💬 칭찬은 <b>참을성</b>을 키워요', '참을성이 높을수록 술 생각이 천천히 올라요'],
+    [() => $('lcol'), '📞 부장님 전화 같은 <b>유혹</b>이 오면 9초 안에 거절 멘트를 골라 줘요', '늦으면 남편이 알아서 대답… 보통 망해요 ㅋㅋ'],
+    [() => $('endBtn'), '🌙 로 일찍 끝내면 남은 시간의 술 생각까지 계산해요', '그럼 금주 시작! 🍀']
+  ],
+  quit: [
+    [() => $('apBox').closest('.card0'), '<b>멘탈·퇴사 욕구·통장</b>을 지켜요', '퇴사 욕구가 100이 되면 진짜 사표를 내요!'],
+    [() => $('lcol'), '남편이 퇴근하면 회사 이야기를 털어놔요. <b>대답을 잘 골라</b> 주세요', '"그냥 확 그만둬!"는 위험해요 ㅋㅋ'],
+    [abarBtn(0), '👂 <b>들어주기</b>는 멘탈을 올리고 퇴사 욕구를 낮춰요', '🍱 도시락, 🍖 맛있는 거, ✈️ 주말여행도 멘탈에 좋아요'],
+    [abarBtn(4), '💡 <b>부업 응원</b>은 만약을 위한 보험!', '사표를 내도 부업이 70 넘으면 부부 창업 엔딩'],
+    [() => $('endBtn'), '🌙 로 하루를 마쳐요. 5일차는 월급날 💰', '그럼 출근 버티기 시작! 💼']
+  ]
+};
+function runTutorial(force) {
+  const key = 'tut_' + EP; if (!force && store.get(key, false)) return; if (ROLE === 'husband') return;
+  const steps = TUTS[EP]; if (!steps) return; store.set(key, true); tutOn = true;
+  const el = $('tut'), hole = el.querySelector('.hole'), tip = el.querySelector('.tip'), tt = el.querySelector('.tt'), next = el.querySelector('.next');
+  let i = 0;
+  const show = () => {
+    if (i >= steps.length) { el.classList.remove('on'); tutOn = false; return; }
+    const [getT, msg, sub] = steps[i], t = getT(); const r = t ? t.getBoundingClientRect() : { left: innerWidth / 2 - 40, top: innerHeight / 2 - 40, width: 80, height: 80 };
+    const pad = 6; Object.assign(hole.style, { left: (r.left - pad) + 'px', top: (r.top - pad) + 'px', width: (r.width + pad * 2) + 'px', height: (r.height + pad * 2) + 'px' });
+    tt.innerHTML = `${msg}<small>${sub}</small>`; next.textContent = i === steps.length - 1 ? '시작하기!' : `다음 (${i + 1}/${steps.length})`;
+    const below = r.top + r.height / 2 < innerHeight / 2; tip.style.top = below ? (r.top + r.height + 18) + 'px' : ''; tip.style.bottom = below ? '' : (innerHeight - r.top + 18) + 'px';
+    el.classList.add('on'); sfx('tap', true);
+  };
+  next.onclick = () => { i++; show(); };
+  el.querySelector('.skip').onclick = () => { i = steps.length; show(); };
+  show();
+}
+function tutorialWhenReady() { const tryRun = (n = 0) => { if (n > 40) return; if (!$('modal').classList.contains('hide') || !S) return setTimeout(() => tryRun(n + 1), 500); runTutorial(false); }; setTimeout(() => tryRun(), 900); }
 
 // 접속자 · 방문자 수
 const VID = (() => { let v = store.get('vid', ''); if (!/^[a-z0-9]{6,16}$/.test(v)) { v = Math.random().toString(36).slice(2, 12).replace(/[^a-z0-9]/g, 'x').padEnd(8, '0'); store.set('vid', v); } return v; })();
@@ -1618,6 +1737,8 @@ $('menuBtn').onclick = e => { e.stopPropagation(); $('menu').classList.toggle('s
 $('menu').addEventListener('click', () => setTimeout(() => $('menu').classList.remove('show'), 0));
 canvas.addEventListener('pointerdown', () => $('menu').classList.remove('show'));
 $('statsBtn').onclick = () => $('liveBtn').onclick();
+$('quizBtn').onclick = () => openQuiz();
+$('tutBtn').onclick = () => { if (S && !S.over) runTutorial(true); else toast('게임을 시작하면 볼 수 있어요'); };
 $('endBtn').onclick = endDay;
 let overview = false; $('viewBtn').onclick = () => { overview = !overview; $('viewBtn').textContent = overview ? '👁️ 가까이 보기' : '👁️ 집 전체 보기'; toast(overview ? '집 전체 보기' : '가까이 보기', 1200); };
 
@@ -1709,4 +1830,4 @@ lieDown(); W.root.position.set(0, 0, 2.6); W.root.rotation.y = Math.PI;
 setTags(); render();
 $('loading').remove();
 loop();
-openStart();
+if (params.get('quiz')) openQuiz(); else openStart();
