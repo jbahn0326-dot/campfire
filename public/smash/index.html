@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<title>강냉이 털기 3D</title>
+<meta name="description" content="30초 동안 강냉이 몇 개 털 수 있을까? 주먹·싸대기·뿅망치·프라이팬·대파로 스트레스 박살내는 3D 게임">
+<meta name="theme-color" content="#0b0d14">
+<meta property="og:type" content="website">
+<meta property="og:title" content="강냉이 털기 3D 🌽">
+<meta property="og:description" content="30초 동안 강냉이 몇 개 털 수 있을까? 랭킹 도전!">
+<meta property="og:image" content="/og.png">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&family=Black+Han+Sans&display=swap" rel="stylesheet">
+<script type="importmap">{"imports":{"three":"/vendor/three.module.min.js","three/addons/":"/vendor/jsm/"}}</script>
+<style>
+:root{--ink:#eef0f7;--dim:#9aa3bd;--panel:rgba(14,16,24,.92);--line:rgba(255,255,255,.09);--accent:#ff9a4a;--gold:#e9c46a;--red:#ff5a4a;--st:env(safe-area-inset-top,0px);--sb:env(safe-area-inset-bottom,0px)}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;background:#0b0d14;color:var(--ink);font-family:"Noto Sans KR",system-ui,-apple-system,"Apple SD Gothic Neo",sans-serif;overflow:hidden;overscroll-behavior:none;-webkit-user-select:none;user-select:none;font-weight:500;-webkit-font-smoothing:antialiased}
+canvas#scene{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;outline:none}
+#vignette{position:fixed;inset:0;pointer-events:none;background:radial-gradient(ellipse at 50% 45%,rgba(0,0,0,0) 55%,rgba(0,0,0,.55) 100%)}
+button{font:inherit;color:inherit;cursor:pointer;border:0}
+.pn{background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);box-shadow:0 6px 20px rgba(0,0,0,.35)}
+.hide{display:none!important}
+
+#hud{position:fixed;top:calc(10px + var(--st));left:10px;right:64px;max-width:420px;border-radius:16px;padding:10px 13px;pointer-events:none}
+#hud .t1{display:flex;align-items:center;justify-content:space-between;gap:8px}
+#hud .logo{font-size:18px;font-weight:900;letter-spacing:-.5px}
+#hud .mode{font-size:12px;font-weight:700;color:#2a1c06;background:linear-gradient(180deg,#f2cf72,#d4a23e);border-radius:8px;padding:2px 8px}
+#hud .grid{margin-top:8px;display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:8px;background:rgba(255,255,255,.05);border-radius:10px;padding:7px 10px}
+#hud .grid div{font-size:12px;color:#aab3cc}
+#hud .grid b{display:block;font-size:19px;font-weight:900;color:#fff;line-height:1.15}
+#hud .grid .sc b{color:var(--gold)}
+#timebar{margin-top:8px;height:7px;border-radius:6px;background:rgba(255,255,255,.1);overflow:hidden}
+#timebar i{display:block;height:100%;width:100%;background:linear-gradient(90deg,#ff9a4a,#ffd23a);border-radius:6px}
+#timebar.low i{background:#ff5a4a}
+
+#side{position:fixed;top:calc(10px + var(--st));right:10px;display:flex;flex-direction:column;gap:8px}
+#side button{width:46px;height:46px;border-radius:14px;font-size:21px;display:flex;align-items:center;justify-content:center}
+
+#tools{position:fixed;left:0;right:0;bottom:0;padding:8px 8px calc(10px + var(--sb));display:grid;grid-template-columns:repeat(4,1fr);gap:7px;max-width:520px;margin:0 auto}
+.tool{border-radius:14px;padding:7px 2px 6px;display:flex;flex-direction:column;align-items:center;gap:2px;background:rgba(14,16,24,.88);border:1px solid var(--line);transition:transform .08s}
+.tool:active{transform:scale(.94)}
+.tool .e{font-size:25px;line-height:1}
+.tool .l{font-size:12.5px;font-weight:700;color:#cfd5e6}
+.tool.on{background:linear-gradient(180deg,#ffb066,#ff7a3a);border-color:#ffc58f;box-shadow:0 0 16px rgba(255,140,60,.55)}
+.tool.on .l{color:#fff}
+
+#fx{position:fixed;inset:0;pointer-events:none;overflow:hidden}
+.pop{position:absolute;transform:translate(-50%,-50%);font-family:"Black Han Sans","Noto Sans KR",sans-serif;font-size:44px;color:#ffd23a;white-space:nowrap;-webkit-text-stroke:2px #2a1606;text-shadow:0 4px 0 #2a1606,0 0 18px rgba(255,140,40,.6);animation:pop .75s ease-out forwards}
+.pop.s{font-size:22px;color:#fff;-webkit-text-stroke:1px #2a1606;text-shadow:0 2px 0 #2a1606}
+.pop.t{color:#fff;font-size:24px;text-shadow:0 2px 0 #2a1606,0 0 12px rgba(255,255,255,.6)}
+@keyframes pop{0%{opacity:0;transform:translate(-50%,-50%) scale(.4) rotate(-8deg)}15%{opacity:1;transform:translate(-50%,-50%) scale(1.25) rotate(4deg)}30%{transform:translate(-50%,-50%) scale(1)}100%{opacity:0;transform:translate(-50%,-120%) scale(1)}}
+#combo{position:fixed;left:14px;top:42%;font-family:"Black Han Sans",sans-serif;font-size:34px;color:#ff7a3a;-webkit-text-stroke:1.5px #2a1606;text-shadow:0 3px 0 #2a1606;transform:rotate(-8deg);pointer-events:none;transition:opacity .2s}
+#combo small{display:block;font-size:17px;color:#ffd23a}
+#bubble{position:fixed;left:0;top:0;max-width:220px;font-size:15px;font-weight:700;line-height:1.4;padding:8px 13px;border-radius:14px;background:rgba(250,246,238,.97);color:#231c16;box-shadow:0 6px 18px rgba(0,0,0,.35);pointer-events:none;opacity:0;transition:opacity .2s;white-space:nowrap}
+#bubble:after{content:"";position:absolute;left:18px;bottom:-6px;border:6px solid transparent;border-top-color:rgba(250,246,238,.97);border-bottom:0}
+#bubble.show{opacity:1}
+#hint{position:fixed;left:50%;bottom:calc(140px + var(--sb));transform:translateX(-50%);font-size:15px;font-weight:700;background:rgba(14,16,24,.85);border:1px solid var(--line);border-radius:20px;padding:7px 14px;pointer-events:none;white-space:nowrap;animation:blink 1.4s infinite}
+@keyframes blink{50%{opacity:.55}}
+
+.overlay{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(6,8,14,.55);z-index:5}
+.sheet{width:100%;max-width:380px;border-radius:22px;padding:20px 18px;max-height:calc(100% - 20px);overflow:auto}
+.sheet h2{margin:0;font-size:24px;font-weight:900;letter-spacing:-.5px}
+.sheet .sub{color:var(--dim);font-size:14px;margin:6px 0 14px;line-height:1.5}
+.big{font-family:"Black Han Sans",sans-serif;font-size:40px;line-height:1.05;color:#ffd23a;-webkit-text-stroke:1.5px #2a1606;text-shadow:0 4px 0 #2a1606;letter-spacing:-.5px}
+.btn{display:block;width:100%;padding:13px 14px;border-radius:14px;font-size:16px;font-weight:900;margin-top:9px;background:rgba(255,255,255,.08);border:1px solid var(--line)}
+.btn.p{background:linear-gradient(180deg,#ffb066,#ff7a3a);color:#fff;border-color:#ffc58f;box-shadow:0 4px 16px rgba(255,120,40,.35)}
+.btn.g{background:linear-gradient(180deg,#f2cf72,#d4a23e);color:#2a1c06}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.row2 .btn{margin-top:9px}
+input.nick{width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--line);background:rgba(255,255,255,.07);color:#fff;font:inherit;font-size:16px;font-weight:700;outline:none;user-select:text;-webkit-user-select:text}
+input.nick:focus{border-color:var(--accent)}
+label.small{display:block;font-size:12.5px;color:var(--dim);margin:0 0 6px 2px}
+.res{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin:14px 0 6px}
+.res div{background:rgba(255,255,255,.06);border-radius:12px;padding:9px 6px;text-align:center;font-size:12px;color:var(--dim)}
+.res b{display:block;font-size:20px;color:#fff;font-weight:900}
+.title{display:inline-block;margin-top:10px;font-size:14px;font-weight:900;color:#2a1c06;background:linear-gradient(180deg,#f2cf72,#d4a23e);border-radius:10px;padding:4px 10px}
+.rankinfo{font-size:15px;font-weight:700;margin-top:10px;color:#ffd9b0;min-height:22px}
+.tabs{display:flex;gap:6px;margin:12px 0 10px}
+.tabs button{flex:1;padding:8px;border-radius:10px;background:rgba(255,255,255,.06);font-weight:700;font-size:14px;border:1px solid var(--line)}
+.tabs button.on{background:#ff8a45;color:#fff;border-color:#ffb47a}
+ol.rank{list-style:none;margin:0;padding:0;font-size:15px}
+ol.rank li{display:grid;grid-template-columns:34px 1fr auto;gap:8px;align-items:center;padding:8px 10px;border-radius:10px}
+ol.rank li:nth-child(odd){background:rgba(255,255,255,.04)}
+ol.rank li.me{background:rgba(255,138,69,.25);outline:1px solid rgba(255,170,110,.5)}
+ol.rank .n{font-weight:900;color:var(--dim);text-align:center}
+ol.rank li:nth-child(1) .n{color:#ffd23a}ol.rank li:nth-child(2) .n{color:#d9dde8}ol.rank li:nth-child(3) .n{color:#e7a368}
+ol.rank .nm{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ol.rank .nm small{color:var(--dim);font-weight:500;margin-left:4px}
+ol.rank .s{font-weight:900;color:var(--gold)}
+.empty{text-align:center;color:var(--dim);padding:20px 0;font-size:14px}
+.note{font-size:12.5px;color:var(--dim);line-height:1.55;background:rgba(255,255,255,.04);border:1px dashed rgba(255,255,255,.14);border-radius:12px;padding:10px 12px;margin:12px 0 0}
+#count{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;pointer-events:none;z-index:6}
+#count span{font-family:"Black Han Sans",sans-serif;font-size:120px;color:#ffd23a;-webkit-text-stroke:3px #2a1606;text-shadow:0 8px 0 #2a1606;animation:cnt .9s ease-out}
+@keyframes cnt{0%{transform:scale(2);opacity:0}30%{transform:scale(1);opacity:1}100%{transform:scale(.8);opacity:0}}
+#pv{display:block;width:240px;height:240px;margin:6px auto 0;border-radius:16px;border:1px solid var(--line);background:#22252e;touch-action:none}
+.zrow{display:flex;gap:8px;align-items:center;margin-top:10px}
+.zrow input{flex:1;accent-color:var(--accent)}
+.zrow button{width:40px;height:38px;border-radius:10px;background:rgba(255,255,255,.08);border:1px solid var(--line);font-weight:900}
+#shareImg{display:block;width:100%;border-radius:14px;margin-top:10px}
+#toast{position:fixed;left:50%;top:calc(90px + var(--st));transform:translateX(-50%);background:rgba(250,246,238,.97);color:#231c16;font-weight:700;padding:9px 16px;border-radius:12px;z-index:9;opacity:0;transition:opacity .25s;pointer-events:none;white-space:nowrap}
+#toast.show{opacity:1}
+#cert{display:block;width:100%;border-radius:14px;box-shadow:0 6px 20px rgba(0,0,0,.4)}
+.row3{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px}
+.fancy{font-family:"Black Han Sans",sans-serif;font-size:24px;background:none;padding:6px 0;letter-spacing:-.5px;-webkit-text-stroke:1.5px #2a1606;transition:transform .08s}
+.fancy:active{transform:scale(.92)}
+.f1{color:#ff5aa8;text-shadow:0 3px 0 #2a1606,0 0 14px rgba(255,90,168,.6)}
+.f2{color:#ffd23a;text-shadow:0 3px 0 #2a1606,0 0 14px rgba(255,210,58,.6)}
+.f3{color:#5ad8ff;text-shadow:0 3px 0 #2a1606,0 0 14px rgba(90,216,255,.6)}
+#flash{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;transition:opacity .25s}
+</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+<div id="vignette"></div>
+<div id="flash"></div>
+<div id="fx"></div>
+<div id="bubble"></div>
+<div id="combo" class="hide"></div>
+
+<div id="hud" class="pn">
+  <div class="t1"><div class="logo">강냉이 털기 🌽</div><div class="mode" id="modeTag">자유 연습</div></div>
+  <div class="grid">
+    <div class="sc">점수<b id="hScore">0</b></div>
+    <div>털린 강냉이<b id="hTeeth">0</b></div>
+    <div>최고 콤보<b id="hCombo">0</b></div>
+  </div>
+  <div id="timebar" class="hide"><i></i></div>
+</div>
+<div id="side">
+  <button class="pn" id="bRank" aria-label="랭킹">🏆</button>
+  <button class="pn" id="bPhoto" aria-label="사진 넣기">📷</button>
+  <button class="pn" id="bSound" aria-label="소리">🔊</button>
+  <button class="pn" id="bHome" aria-label="처음으로">🏠</button>
+</div>
+<div id="hint" class="hide">👆 얼굴을 탭해서 강냉이를 털어보세요!</div>
+<div id="tools"></div>
+<div id="count"></div>
+<div id="toast"></div>
+
+<!-- 시작 -->
+<div id="start" class="overlay">
+  <div class="sheet pn">
+    <div class="big">강냉이 털기 3D</div>
+    <div class="sub">주먹, 싸대기, 뿅망치, 프라이팬, 대파까지!<br>30초 동안 강냉이를 최대한 많이 털고 랭킹에 도전하세요.</div>
+    <label class="small" for="nick">랭킹에 올라갈 닉네임</label>
+    <input class="nick" id="nick" maxlength="12" placeholder="닉네임 (최대 12자)" autocomplete="off">
+    <label class="small" for="target" style="margin-top:10px">오늘 털어버릴 것 <span style="opacity:.7">(수료증에 들어가요)</span></label>
+    <input class="nick" id="target" maxlength="14" placeholder="예: 월요병, 야근, 다이어트 실패" autocomplete="off">
+    <button class="btn p" id="goRank">⏱️ 30초 랭킹전</button>
+    <div class="row2">
+      <button class="btn" id="goFree">🥊 자유 연습</button>
+      <button class="btn" id="goBoard">🏆 랭킹 보기</button>
+    </div>
+  </div>
+</div>
+
+<!-- 결과 (수료증) -->
+<div id="result" class="overlay hide">
+  <div class="sheet pn" style="text-align:center;padding:14px">
+    <img id="cert" alt="강냉이 털기 수료증">
+    <div class="rankinfo" id="rRank"></div>
+    <div class="row3">
+      <button class="fancy f1" id="rAgain">한번 더!</button>
+      <button class="fancy f2" id="rSave">저장하기</button>
+      <button class="fancy f3" id="rShare">공유하기</button>
+    </div>
+    <div class="row2">
+      <button class="btn" id="rBoard">🏆 랭킹</button>
+      <button class="btn" id="rHome">🏠 처음으로</button>
+    </div>
+  </div>
+</div>
+
+<!-- 랭킹 -->
+<div id="board" class="overlay hide">
+  <div class="sheet pn">
+    <h2>🏆 강냉이 랭킹</h2>
+    <div class="tabs"><button id="tToday" class="on">오늘</button><button id="tAll">역대</button></div>
+    <div id="bNote" class="sub hide" style="margin:0 0 8px"></div>
+    <ol class="rank" id="rankList"></ol>
+    <button class="btn" id="bClose">닫기</button>
+  </div>
+</div>
+
+<!-- 공유 (대체 화면) -->
+<div id="share" class="overlay hide">
+  <div class="sheet pn">
+    <h2 id="sTitle">📤 결과 공유</h2>
+    <div class="sub" style="margin-bottom:0">이미지를 길게 눌러 저장하거나, 링크를 복사해서 보내세요.</div>
+    <img id="shareImg" alt="결과 이미지">
+    <button class="btn g" id="sCopy">🔗 링크 + 문구 복사</button>
+    <button class="btn" id="sClose">닫기</button>
+  </div>
+</div>
+
+<!-- 사진 -->
+<div id="photo" class="overlay hide">
+  <div class="sheet pn">
+    <h2>📷 얼굴에 사진 넣기</h2>
+    <div id="pPick">
+      <label class="btn p" style="text-align:center">🖼️ 사진 고르기<input type="file" accept="image/*" id="pFile" hidden></label>
+    </div>
+    <div id="pAdj" class="hide">
+      <canvas id="pv" width="480" height="480"></canvas>
+      <div class="sub" style="text-align:center;margin:8px 0 0">드래그로 이동 · 두 손가락으로 크기 조절<br>얼굴을 원 안에, 입을 <b style="color:#ff8a45">점선</b> 위치에 맞춰 주세요</div>
+      <div class="zrow"><button id="pZo">−</button><input type="range" id="pZ" min="0.5" max="4" step="0.01" value="1"><button id="pZi">+</button><button id="pRot">⟳</button></div>
+      <label class="btn" style="text-align:center">다른 사진<input type="file" accept="image/*" id="pFile2" hidden></label>
+    </div>
+    <div class="note">• 본인 사진이나 동의받은 사람의 사진만 써 주세요.<br>• 특정인을 조롱하거나 괴롭히는 용도로 쓰지 말아 주세요.<br>• 사진은 이 기기 안에서만 처리되고, 서버로 보내거나 저장하지 않아요. 공유 이미지에는 사진이 들어가지 않아요.</div>
+    <div class="row2"><button class="btn" id="pRemove">사진 빼기</button><button class="btn" id="pCancel">취소</button></div>
+    <button class="btn p" id="pApply" disabled>적용</button>
+  </div>
+</div>
+
+<script type="module" src="./smash.js"></script>
+</body>
+</html>

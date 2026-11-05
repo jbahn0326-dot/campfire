@@ -98,6 +98,9 @@ const server = http.createServer((req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-cache' });
     return res.end(JSON.stringify({ donateUrl: /^https:\/\//.test(process.env.DONATE_URL || '') ? process.env.DONATE_URL : '' }));
   }
+  if (u === '/api/smash/rank') { res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); return res.end(JSON.stringify(smashBoards())); }
+  if (u === '/api/smash/score' && req.method === 'POST') return smashSubmit(req, res);
+  if (u === '/smash') { res.writeHead(301, { Location: '/smash/' }); return res.end(); }
   if (u === '/house') { res.writeHead(301, { Location: '/house/' }); return res.end(); }
   if (u.endsWith('/')) u += 'index.html';
   const file = path.normalize(path.join(PUB, u));
@@ -420,6 +423,68 @@ function houseUpgrade(socket, key) {
 }
 setInterval(() => { for (const c of houseConns) { if (!c.alive) { c._end(); continue; } c.alive = false; c.ping(); } }, 30000);
 
+
+// ---------------- 강냉이 털기 랭킹 (data/smash.json + Supabase site_stats 'smash' 줄) ----------------
+// 30초 랭킹전 점수를 '오늘'(한국 시간)과 '역대'로 나눠 사람(기기 아이디)마다 최고 기록만 남겨요.
+const SMASH_FILE = path.join(__dirname, 'data', 'smash.json');
+const SMASH_KEEP = 100, SMASH_SHOW = 30;
+let smash = { all: [], days: {} };
+let smashDirty = false;
+const smashLast = new Map();          // 아이디 -> 마지막 등록 시각 (도배 막기)
+function smashBoards() {
+  const k = rollDay(); const strip = l => l.slice(0, SMASH_SHOW).map(({ id, nick, score, teeth, combo }) => ({ id, nick, score, teeth, combo }));
+  return { today: strip(smash.days[k] || []), all: strip(smash.all) };
+}
+function smashPut(list, e) {
+  const i = list.findIndex(x => x.id === e.id);
+  if (i >= 0) { if (list[i].score >= e.score) { list[i].nick = e.nick; return list.findIndex(x => x.id === e.id) + 1; } list.splice(i, 1); }
+  list.push(e); list.sort((a, b) => b.score - a.score || a.t - b.t); if (list.length > SMASH_KEEP) list.length = SMASH_KEEP;
+  const r = list.findIndex(x => x.id === e.id); return r >= 0 ? r + 1 : null;
+}
+function smashSubmit(req, res) {
+  let body = ''; let dead = false;
+  const done = (code, obj) => { if (dead) return; dead = true; res.writeHead(code, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(obj)); };
+  req.on('data', d => { body += d; if (body.length > 1024) { done(413, { error: 'too big' }); req.destroy(); } });
+  req.on('end', () => {
+    if (dead) return;
+    let j; try { j = JSON.parse(body); } catch { return done(400, { error: 'bad json' }); }
+    const id = String(j.id || ''); if (!/^[a-z0-9]{6,16}$/.test(id)) return done(400, { error: 'bad id' });
+    const int = (v, hi) => Number.isInteger(v) && v >= 0 && v <= hi ? v : null;
+    const score = int(j.score, 60000), teeth = int(j.teeth, 400), combo = int(j.combo, 600), hits = int(j.hits, 600);
+    if (score == null || teeth == null || combo == null || hits == null) return done(400, { error: 'bad score' });
+    // 30초 안에 나올 수 있는 점수인지 대충 확인 (타격당 최대 60점, 강냉이당 최대 300점, 완판 보너스 포함)
+    if (combo > hits || teeth > hits * 4 + 16 || score > hits * 60 + teeth * 300 + Math.ceil(teeth / 16) * 1500 + 100) return done(400, { error: 'impossible' });
+    const now = Date.now(); if (now - (smashLast.get(id) || 0) < 15000) return done(429, { error: 'slow down' }); smashLast.set(id, now);
+    if (smashLast.size > 5000) for (const [k, t] of smashLast) if (now - t > 60000) smashLast.delete(k);
+    let nick = String(j.nick || '').replace(INVISIBLE, '').replace(/[<>]/g, '').trim(); nick = Array.from(nick).slice(0, 12).join('');
+    nick = filterBad(nick || '익명의 강냉이헌터');
+    const e = { id, nick, score, teeth, combo, t: now };
+    const k = rollDay(); if (!smash.days[k]) smash.days[k] = [];
+    const rank = { today: smashPut(smash.days[k], { ...e }), all: smashPut(smash.all, { ...e }) };
+    for (const d of Object.keys(smash.days).sort().slice(0, -3)) delete smash.days[d];   // 최근 3일만 보관
+    smashDirty = true;
+    done(200, { ok: true, rank, boards: smashBoards() });
+  });
+  req.on('error', () => done(400, { error: 'read' }));
+}
+async function loadSmash() {
+  try { const o = JSON.parse(fs.readFileSync(SMASH_FILE, 'utf8')); if (o && Array.isArray(o.all)) smash = { all: o.all, days: o.days || {} }; } catch {}
+  if (useDb) {
+    try {
+      const r = await fetch(`${SB_URL}/rest/v1/site_stats?id=eq.smash&select=data`, { headers: sbHeaders() });
+      if (r.ok) { const rows = await r.json(); const o = rows[0] && rows[0].data; if (o && Array.isArray(o.all) && o.all.length >= smash.all.length) smash = { all: o.all, days: o.days || {} }; }
+    } catch (e) { console.log('⚠️  강냉이 랭킹 불러오기 실패:', e.message); }
+  }
+  console.log(`🌽 강냉이 랭킹 ${smash.all.length}명`);
+}
+async function saveSmash() {
+  if (!smashDirty) return; smashDirty = false;
+  try { fs.mkdirSync(path.dirname(SMASH_FILE), { recursive: true }); fs.writeFileSync(SMASH_FILE, JSON.stringify(smash)); } catch {}
+  if (useDb) { try { await fetch(`${SB_URL}/rest/v1/site_stats`, { method: 'POST', headers: { ...sbHeaders(), Prefer: 'resolution=merge-duplicates' }, body: JSON.stringify({ id: 'smash', data: smash }) }); } catch {} }
+}
+setInterval(saveSmash, 20000);
+loadSmash();
+
 loadStats();
-for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => { statsDirty = true; saveStats().finally(() => process.exit(0)); setTimeout(() => process.exit(0), 3000); });
+for (const sig of ['SIGTERM', 'SIGINT']) process.on(sig, () => { statsDirty = true; Promise.all([saveStats(), saveSmash()]).finally(() => process.exit(0)); setTimeout(() => process.exit(0), 3000); });
 server.listen(PORT, () => console.log(`🔥 모닥불 캠핑장이 열렸어요: http://localhost:${PORT}`));
