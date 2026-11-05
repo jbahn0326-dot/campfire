@@ -9,7 +9,10 @@
 <meta property="og:type" content="website">
 <meta property="og:title" content="강냉이 털기 3D 🌽">
 <meta property="og:description" content="30초 동안 강냉이 몇 개 털 수 있을까? 랭킹 도전!">
-<meta property="og:image" content="/og.png">
+<meta property="og:image" content="/smash/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&family=Black+Han+Sans&family=Gaegu:wght@400;700&display=swap" rel="stylesheet">
@@ -39,7 +42,21 @@ button{font:inherit;color:inherit;cursor:pointer;border:0}
 #side{position:fixed;top:calc(10px + var(--st));right:10px;display:flex;flex-direction:column;gap:8px}
 #side button{width:46px;height:46px;border-radius:14px;font-size:21px;display:flex;align-items:center;justify-content:center}
 
-#tools{position:fixed;left:0;right:0;bottom:0;padding:8px 8px calc(10px + var(--sb));display:grid;grid-template-columns:repeat(4,1fr);gap:7px;max-width:520px;margin:0 auto}
+#tools{position:fixed;left:0;right:0;bottom:0;padding:8px 8px calc(10px + var(--sb));display:grid;grid-auto-flow:column;grid-template-rows:repeat(2,auto);grid-auto-columns:calc((100% - 21px) / 4);gap:7px;max-width:520px;margin:0 auto;overflow-x:auto;scroll-snap-type:x proximity;scrollbar-width:none;touch-action:pan-x}
+#tools::-webkit-scrollbar{display:none}
+.tool{scroll-snap-align:start;position:relative}
+.tool.lock{opacity:.55}.tool.lock .e{filter:grayscale(1)}
+.tool .lk{position:absolute;top:3px;right:5px;font-size:11px}
+.tool.new:after{content:'NEW';position:absolute;top:-5px;right:-3px;font-size:10px;font-weight:900;background:#ff5a4a;color:#fff;border-radius:6px;padding:1px 5px}
+.tool .cdb{position:absolute;left:8px;right:8px;bottom:3px;height:3px;border-radius:2px;background:rgba(255,255,255,.7);transform-origin:left;transform:scaleX(0)}
+#ult{position:fixed;right:12px;bottom:calc(150px + var(--sb));width:78px;height:78px;border-radius:50%;border:3px solid rgba(255,255,255,.2);background:conic-gradient(#ff5a4a var(--p,0%),rgba(14,16,24,.85) 0);display:flex;flex-direction:column;align-items:center;justify-content:center;font-weight:900;font-size:12px;color:#fff;box-shadow:0 6px 18px rgba(0,0,0,.4);z-index:2}
+#ult span{font-size:28px;line-height:1}
+#ult.ready{border-color:#ffd23a;animation:ultp .6s infinite alternate;background:radial-gradient(circle,#ffb066,#ff3a3a)}
+@keyframes ultp{to{transform:scale(1.1);box-shadow:0 0 30px #ff7a3a}}
+#vsLine{margin-top:6px;font-size:12.5px;font-weight:700;color:#ffd9b0}
+#vsLine.ok{color:#5fd38d}
+.vsban{background:linear-gradient(180deg,rgba(255,90,74,.25),rgba(255,90,74,.1));border:1px solid rgba(255,120,100,.5);border-radius:14px;padding:10px 12px;margin:0 0 12px;font-size:15px;font-weight:700;line-height:1.45}
+.vsban b{color:#ffd23a}
 .tool{border-radius:14px;padding:7px 2px 6px;display:flex;flex-direction:column;align-items:center;gap:2px;background:rgba(14,16,24,.88);border:1px solid var(--line);transition:transform .08s}
 .tool:active{transform:scale(.94)}
 .tool .e{font-size:25px;line-height:1}
@@ -148,6 +165,7 @@ ol.rank .s{font-weight:900;color:var(--gold)}
     <div>최고 콤보<b id="hCombo">0</b></div>
   </div>
   <div id="timebar" class="hide"><i></i></div>
+  <div id="vsLine" class="hide"></div>
 </div>
 <div id="side">
   <button class="pn" id="bRank" aria-label="랭킹">🏆</button>
@@ -156,6 +174,7 @@ ol.rank .s{font-weight:900;color:var(--gold)}
   <button class="pn" id="bHome" aria-label="처음으로">🏠</button>
 </div>
 <div id="hint" class="hide">👆 얼굴을 탭해서 강냉이를 털어보세요!</div>
+<button id="ult" class="hide" aria-label="필살기"><span>💥</span>필살기</button>
 <div id="tools"></div>
 <div id="count"></div>
 <div id="toast"></div>
@@ -163,6 +182,7 @@ ol.rank .s{font-weight:900;color:var(--gold)}
 <!-- 시작 -->
 <div id="start" class="overlay">
   <div class="sheet pn">
+    <div id="vsBan" class="vsban hide"></div>
     <div class="big">강냉이 털기 3D</div>
     <div class="sub">주먹, 싸대기, 뿅망치, 프라이팬, 대파까지!<br>누가 힘들게 했는지 적고, 30초 동안 강냉이를 최대한 많이 털어 보세요.</div>
     <label class="small" for="nick">랭킹에 올라갈 닉네임</label>

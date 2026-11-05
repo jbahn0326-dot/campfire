@@ -116,7 +116,7 @@ const server = http.createServer((req, res) => {
       // 카카오톡·인스타 미리보기는 이미지 주소가 전체 URL이어야 해서 접속 주소로 채워 넣어요
       const host = String(req.headers['x-forwarded-host'] || req.headers.host || '').replace(/[^a-zA-Z0-9.:-]/g, '');
       const proto = String(req.headers['x-forwarded-proto'] || 'http').split(',')[0] === 'https' ? 'https' : 'http';
-      if (host) data = Buffer.from(data.toString('utf8').replace(/content="\/og\.png"/g, `content="${proto}://${host}/og.png"`));
+      if (host) data = Buffer.from(data.toString('utf8').replace(/content="\/((?:smash\/)?og\.png)"/g, (m, f) => `content="${proto}://${host}/${f}"`));
     }
     res.end(data);
   });
@@ -452,8 +452,8 @@ function smashSubmit(req, res) {
     const int = (v, hi) => Number.isInteger(v) && v >= 0 && v <= hi ? v : null;
     const score = int(j.score, 60000), teeth = int(j.teeth, 400), combo = int(j.combo, 600), hits = int(j.hits, 600);
     if (score == null || teeth == null || combo == null || hits == null) return done(400, { error: 'bad score' });
-    // 30초 안에 나올 수 있는 점수인지 대충 확인 (타격당 최대 60점, 강냉이당 최대 300점, 완판 보너스 포함)
-    if (combo > hits || teeth > hits * 4 + 16 || score > hits * 60 + teeth * 300 + Math.ceil(teeth / 16) * 1500 + 100) return done(400, { error: 'impossible' });
+    // 30초 안에 나올 수 있는 점수인지 대충 확인 (타격당 최대 75점, 강냉이당 최대 300점, 완판·필살기 보너스 포함)
+    if (combo > hits || teeth > hits * 6 + 16 || score > hits * 80 + teeth * 300 + Math.ceil(teeth / 16) * 1500 + Math.floor(hits / 8) * 2400 + 100) return done(400, { error: 'impossible' });
     const now = Date.now(); if (now - (smashLast.get(id) || 0) < 15000) return done(429, { error: 'slow down' }); smashLast.set(id, now);
     if (smashLast.size > 5000) for (const [k, t] of smashLast) if (now - t > 60000) smashLast.delete(k);
     let nick = String(j.nick || '').replace(INVISIBLE, '').replace(/[<>]/g, '').trim(); nick = Array.from(nick).slice(0, 12).join('');

@@ -32,6 +32,8 @@ const DOG = { x: 2.6, z: 3.6 };
 const CAMPER = { x: -9.5, z: 4.5, ry: 1.1 };
 const HOUSE = { x: -3.5, z: 12.5 };   // 남편 개조 하우스 (/house 게임으로 가는 문)
 HOUSE.ry = Math.atan2(-HOUSE.x, -HOUSE.z); HOUSE.door = { x: HOUSE.x + Math.sin(HOUSE.ry) * 1.9, z: HOUSE.z + Math.cos(HOUSE.ry) * 1.9 };
+const SMASH = { x: 4.2, z: 13 };     // 스트레스 해소방 (/smash 강냉이 털기로 가는 문)
+SMASH.ry = Math.atan2(-SMASH.x, -SMASH.z); SMASH.door = { x: SMASH.x + Math.sin(SMASH.ry) * 1.7, z: SMASH.z + Math.cos(SMASH.ry) * 1.7 };
 const LAKE = { x: 22, z: 10, rx: 8.5, rz: 6.2 };
 const DOCK = { x0: 12.6, x1: 18.2, z: 9, w: 1.6 };
 const FISH_SPOT = { x: 17.6, z: 9 };
@@ -268,7 +270,7 @@ const noTree = [];     // {x,z,r}
 // 나무 (인스턴스)
 {
   const r = mulberry32(42), spots = [];
-  noTree.push({ x: 0, z: 0, r: 11 }, { x: HILL.x, z: HILL.z, r: 5 }, { x: TENT_AREA.x, z: TENT_AREA.z, r: 8 }, { x: GRILL.x, z: GRILL.z, r: 4 }, { x: CAMPER.x, z: CAMPER.z, r: 5 }, { x: HOUSE.x, z: HOUSE.z, r: 4.5 },
+  noTree.push({ x: 0, z: 0, r: 11 }, { x: HILL.x, z: HILL.z, r: 5 }, { x: TENT_AREA.x, z: TENT_AREA.z, r: 8 }, { x: GRILL.x, z: GRILL.z, r: 4 }, { x: CAMPER.x, z: CAMPER.z, r: 5 }, { x: HOUSE.x, z: HOUSE.z, r: 4.5 }, { x: SMASH.x, z: SMASH.z, r: 4 },
     { x: BATH.x, z: BATH.z, r: 8 }, { x: BATH_HUT.x, z: BATH_HUT.z, r: 4 }, { x: XMAS.x, z: XMAS.z, r: 11 });
   const ok = (x, z) => {
     const d = Math.hypot(x, z); if (d < 9 || d > 64) return false;
@@ -474,6 +476,24 @@ function makeLantern(x, z) {
   const rug = new THREE.Mesh(new THREE.PlaneGeometry(1, 0.6), mat(0x8a3a3a)); rug.rotation.x = -Math.PI / 2; rug.position.set(0, 0.03, 1.7); g.add(rug);
   g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
   blockers.push({ x: HOUSE.x, z: HOUSE.z, r: 1.7 });
+}
+
+// 스트레스 해소방 (문 앞에서 버튼을 누르면 /smash 강냉이 털기로)
+{
+  const g = new THREE.Group(); g.position.set(SMASH.x, groundH(SMASH.x, SMASH.z), SMASH.z); g.rotation.y = SMASH.ry; scene.add(g);
+  const wall = mat(0x3b2a44), trim = mat(0xff5aa8), wood = mat(0x2a1d18);
+  const body = new THREE.Mesh(new THREE.BoxGeometry(2.6, 2.0, 2.2), wall); body.position.y = 1.0; g.add(body);
+  const roof = new THREE.Mesh(new THREE.BoxGeometry(2.9, 0.22, 2.5), mat(0x22172a)); roof.position.y = 2.1; g.add(roof);
+  const door = new THREE.Mesh(new THREE.BoxGeometry(0.8, 1.35, 0.06), wood); door.position.set(0, 0.68, 1.11); g.add(door);
+  const neonTex = (() => { const c = document.createElement('canvas'); c.width = 512; c.height = 128; const x = c.getContext('2d'); x.fillStyle = '#16101c'; x.fillRect(0, 0, 512, 128); x.shadowColor = '#ff4fa8'; x.shadowBlur = 18; x.fillStyle = '#ffd1ec'; x.font = 'bold 54px sans-serif'; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillText('🌽 스트레스 해소방', 256, 66); const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t; })();
+  const sign = new THREE.Mesh(new THREE.PlaneGeometry(2.2, 0.55), new THREE.MeshBasicMaterial({ map: neonTex })); sign.position.set(0, 1.68, 1.12); g.add(sign);
+  for (const x of [-1.31, 1.31]) { const b = new THREE.Mesh(new THREE.BoxGeometry(0.06, 2.0, 0.06), glow(0xff5aa8)); b.position.set(x, 1.0, 1.11); g.add(b); }
+  const bag = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.85, 14), mat(0xb8402f)); bag.position.set(1.0, 1.0, 1.55); g.add(bag);
+  const rope = new THREE.Mesh(new THREE.CylinderGeometry(0.01, 0.01, 0.6, 4), mat(0x888888)); rope.position.set(1.0, 1.72, 1.55); g.add(rope);
+  const arm = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, 0.7), wood); arm.position.set(1.0, 2.02, 1.3); g.add(arm);
+  const lamp = new THREE.PointLight(0xff6ab8, 4, 8, 1.8); lamp.position.set(0, 1.9, 2.0); g.add(lamp);
+  g.traverse(o => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+  blockers.push({ x: SMASH.x, z: SMASH.z, r: 1.5 });
 }
 
 // 텐트
@@ -1335,12 +1355,14 @@ const near = {
   bath: () => inBath(me.x, me.z),
   shelf: () => Math.hypot(me.x - SHELF.x, me.z - SHELF.z) < 2.6,
   tree: () => Math.hypot(me.x - XMAS.x, me.z - XMAS.z) < 8,
-  house: () => Math.hypot(me.x - HOUSE.door.x, me.z - HOUSE.door.z) < 2.4
+  house: () => Math.hypot(me.x - HOUSE.door.x, me.z - HOUSE.door.z) < 2.4,
+  smash: () => Math.hypot(me.x - SMASH.door.x, me.z - SMASH.door.z) < 2.4
 };
 function zoneName() {
   if (me.tent != null) return '⛺ 텐트 안';
   if (near.bath()) return '♨️ 노천탕 안';
   if (Math.hypot(me.x - HOUSE.x, me.z - HOUSE.z) < 4.5) return '🏠 남편 개조 하우스';
+  if (Math.hypot(me.x - SMASH.x, me.z - SMASH.z) < 4) return '🥊 스트레스 해소방';
   if (Math.sqrt(bathE(me.x, me.z)) < 2 || Math.hypot(me.x - BATH_HUT.x, me.z - BATH_HUT.z) < 4) return '♨️ 노천탕';
   if (Math.hypot(me.x - XMAS.x, me.z - XMAS.z) < 13) return '🎄 크리스마스 광장';
   if (near.grill()) return '🥩 바비큐 그릴';
@@ -1539,6 +1561,7 @@ function currentActions() {
   if (me.tent != null) return [];
   const list = [];
   if (near.house()) list.push(btn('house', '🏠', '집에 들어가기', { hot: true }));
+  if (near.smash()) list.push(btn('smash', '🥊', '스트레스 해소방 들어가기', { hot: true }));
   if (performance.now() < wishUntil && near.hill()) list.push(btn('wish', '🌠', '소원 빌기', { hot: true }));
   if (near.fire()) {
     list.push(btn('log', '🪵', '장작'));
@@ -1575,6 +1598,7 @@ function renderActions() {
 function handleAction(id) {
   switch (id) {
     case 'house': location.href = '/house/'; return;
+    case 'smash': location.href = '/smash/'; return;
     case 'log': return logAction();
     case 'potato': return potatoAction();
     case 'bulmung': return toggleBulmung();
