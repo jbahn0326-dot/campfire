@@ -161,7 +161,7 @@ const ch = {};
   const neck = new THREE.Group(); neck.position.set(0, 1.04, 0); body.add(neck); ch.neck = neck;
   const headG = new THREE.Group(); headG.position.set(0, 0.36, 0); neck.add(headG); ch.headG = headG;
   const R = 0.42; ch.R = R;
-  const head = sph(R, skin, 0, 0, 0, headG, 40); ch.head = head;
+  const head = sph(R, skin.clone(), 0, 0, 0, headG, 40); ch.head = head;
   [-1, 1].forEach(s => { const e = sph(0.09, skin, 0.41 * s, -0.02, 0, headG, 12); e.scale.set(0.55, 1, 0.8); });
   const hair = mat(HAIR);
   const cap = add(new THREE.SphereGeometry(R * 1.035, 32, 16, 0, Math.PI * 2, 0, 1.25), hair, 0, 0, 0, headG); cap.rotation.x = -0.38;
@@ -229,6 +229,58 @@ function drawSign() {
 function applyTarget() { setShirtName(tName()); drawSign(); }
 document.fonts && document.fonts.ready.then(applyTarget);
 
+// 단계별로 망가지는 얼굴 (다크서클 → 붕대 → 퉁퉁 부음)
+const dmg = {};
+{
+  const R = ch.R, hg = ch.headG;
+  dmg.bags = [-1, 1].map(s => { const m = new THREE.Mesh(new THREE.CircleGeometry(1, 20), new THREE.MeshBasicMaterial({ color: 0x5a3a6a, transparent: true, opacity: 0.55, depthWrite: false })); const x = 0.15 * s, y = -0.05; m.position.set(x, y, Math.sqrt(R * R - x * x - y * y) + 0.004); m.rotation.y = Math.atan2(x, 0.39); m.scale.set(0.07, 0.035, 1); hg.add(m); return m; });
+  const band = new THREE.Mesh(new THREE.TorusGeometry(R * 1.0, 0.045, 8, 40), mat(0xf6f2ea)); band.rotation.set(Math.PI / 2 - 0.35, 0.12, 0); band.position.y = 0.17; band.scale.set(1, 1, 0.9); hg.add(band); dmg.band = band;
+  const knot = new THREE.Group(); const k1 = sph(0.05, mat(0xf6f2ea), 0, 0, 0, knot, 10); k1.scale.set(1, 0.7, 0.6); [-1, 1].forEach(s => { const t = box(0.03, 0.14, 0.02, mat(0xf6f2ea), 0.03 * s, -0.08, 0, knot); t.rotation.z = 0.3 * s; }); knot.position.set(0.33, 0.27, -0.2); hg.add(knot); dmg.knot = knot;
+  const red = new THREE.Mesh(new THREE.CircleGeometry(0.02, 10), glow(0xd03a3a)); red.position.set(-0.1, 0.25, 0.4); red.rotation.x = -0.6; hg.add(red); dmg.red = red;
+  dmg.all = [...dmg.bags, band, knot, red];
+  dmg.all.forEach(m => m.visible = false);
+}
+function updateDamage() {
+  const h = game.headHits, ph = photoOn();
+  dmg.bags.forEach(m => m.visible = h >= 12 && !ph);
+  dmg.band.visible = dmg.knot.visible = h >= 25; dmg.red.visible = h >= 25 && !ph;
+  const sw = h >= 40 ? 1 : 0;
+  ch.cheeks.forEach(c => { c.scale.set(1 + sw * 0.7, 0.6 + sw * 0.5, 0.4 + sw * 0.3); c.material.color.set(sw ? 0xe86a6a : 0xf2a69a); });
+  ch.swell = sw;
+  if (h === 12) say('눈이 침침해…'); else if (h === 25) say('붕대 좀 감자…'); else if (h === 40) say('얼굴이 퉁퉁 부었어ㅠ'); else if (h === 60) say('살려줘어어…');
+}
+function addGauge(v) {
+  if (mode !== 'rank' && mode !== 'free') return;
+  game.gauge = Math.min(100, game.gauge + v);
+  const u = $('ult'); u.style.setProperty('--p', game.gauge + '%');
+  if (game.gauge >= 100 && !u.classList.contains('ready')) { u.classList.add('ready'); SND.ult(); popText('💥 필살기 준비!', innerWidth - 60, innerHeight - 250, 's'); }
+}
+function fireUlt() {
+  if (game.gauge < 100 || ult || ko > 0 || (mode !== 'rank' && mode !== 'free')) return;
+  A(); game.gauge = 0; game.ults++; const u = $('ult'); u.classList.remove('ready'); u.style.setProperty('--p', '0%');
+  const hc = new THREE.Vector3(); ch.headG.getWorldPosition(hc);
+  ult = { t: 0, hit: false, at: hc.clone().add(new THREE.Vector3(0, ch.R * 0.9, 0)) };
+  toolModels.ult.visible = true; say('어…? 저게 뭐야?!', 1);
+}
+function ultImpact() {
+  SND.boom(); shake = 0.3; S.sq = 0.3; S.vsq = 0; S.open = 1.6; dizzy = 3; ko = 1.6;
+  const f = $('flash'); f.style.opacity = 0.7; setTimeout(() => f.style.opacity = 0, 160);
+  const mult = 1 + Math.min(2, Math.floor(game.combo / 10) * 0.5);
+  game.score += Math.round(800 * mult); game.hits++; game.headHits++; updateDamage();
+  const left = ch.teeth.filter(t => t.visible); const n = Math.min(left.length, 6);
+  for (let k = 0; k < n; k++) { const t = left.splice(Math.floor(Math.random() * left.length), 1)[0]; spawnTooth(t, new THREE.Vector3(rand(-1.5, 1.5), 1.2, 0.3)); t.visible = false; game.teeth++; game.score += Math.round(100 * mult); }
+  if (n) addTotalTeeth(n);
+  const hc = new THREE.Vector3(); ch.headG.getWorldPosition(hc); const p = toScreen(hc);
+  popText('K.O.!!', p.x, p.y - 40); popText(`필살기 +${Math.round(800 * mult)}`, p.x, p.y + 30, 't');
+  addBruise(new THREE.Vector3(0.05, ch.R, 0.05), 'bump'); addBruise(new THREE.Vector3(-0.1, ch.R * 0.95, 0.1), 'bump');
+  if (!ch.teeth.some(t => t.visible)) { game.score += Math.round(500 * mult); refillT = 1.8; }
+  say('꽥…', 1.4); hud();
+}
+$('ult').onclick = fireUlt;
+
+// 친구 도전장 (?vs=닉네임&s=점수)
+const challenge = (() => { const q = new URLSearchParams(location.search); const s = parseInt(q.get('s'), 10); const nk = String(q.get('vs') || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 12); return nk && s > 0 && s < 100000 ? { nick: nk, score: s } : null; })();
+
 // 머리 · 몸 흔들림 상태 (스프링)
 const S = { rx: 0, vrx: 0, rz: 0, vrz: 0, ry: 0, vry: 0, x: 0, vx: 0, y: 0, vy: 0, z: 0, vz: 0, sq: 1, vsq: 0, open: 0.4, vopen: 0, lean: 0, vlean: 0, leanX: 0, vleanX: 0 };
 function spring(key, target, k, c, dt) { const v = 'v' + key; S[v] += (-(S[key] - target) * k - S[v] * c) * dt; S[key] += S[v] * dt; }
@@ -247,15 +299,19 @@ function placeMouth() {
 // =====================================================================
 // 도구 (3D 모형 · 성능)
 // =====================================================================
+// 점수 균형: 빠른 도구는 약하고(콤보·필살기 게이지↑), 센 도구는 쿨타임이 길어요. 초당 빠지는 강냉이가 비슷하도록 맞춤
 const TOOLS = {
-  fist:    { e: '👊', l: '주먹',   style: 'jab',   pts: 10, cd: 90,  teeth: [[0, .3], [1, .7]], pop: ['퍽!', '팍!', '퍼억!'] },
-  slap:    { e: '🖐️', l: '싸대기', style: 'side',  pts: 8,  cd: 90,  teeth: [[0, .55], [1, .45]], pop: ['짝!', '짜악!'] },
-  hammer:  { e: '🔨', l: '뿅망치', style: 'top',   pts: 12, cd: 160, teeth: [[1, .55], [2, .45]], pop: ['뿅!', '뿅뿅!'] },
-  upper:   { e: '🥊', l: '어퍼컷', style: 'under', pts: 15, cd: 220, teeth: [[2, .5], [3, .5]], pop: ['빡!', '콰앙!'] },
-  slipper: { e: '🩴', l: '슬리퍼', style: 'side',  pts: 10, cd: 100, teeth: [[0, .4], [1, .6]], pop: ['찰싹!', '철썩!'] },
-  pan:     { e: '🍳', l: '프라이팬', style: 'side', pts: 18, cd: 260, teeth: [[2, .6], [3, .4]], pop: ['텅!!', '띠잉~'] },
-  daepa:   { e: '🥬', l: '대파',   style: 'side',  pts: 6,  cd: 70,  teeth: [[0, .7], [1, .3]], pop: ['파!', '파파팍!', '대파 싸대기!'] },
-  kick:    { e: '🦶', l: '돌려차기', style: 'kick', pts: 20, cd: 320, teeth: [[2, .4], [3, .6]], pop: ['뻥!!', '빠악!'] }
+  fist:    { e: '👊', l: '주먹',   style: 'jab',   pts: 10, cd: 90,  g: 5, teeth: [[0, .3], [1, .7]], pop: ['퍽!', '팍!', '퍼억!'] },
+  slap:    { e: '🖐️', l: '싸대기', style: 'side',  pts: 9,  cd: 90,  g: 5, teeth: [[0, .35], [1, .65]], pop: ['짝!', '짜악!'] },
+  hammer:  { e: '🔨', l: '뿅망치', style: 'top',   pts: 14, cd: 260, g: 4, teeth: [[1, .7], [2, .3]], pop: ['뿅!', '뿅뿅!'] },
+  upper:   { e: '🥊', l: '어퍼컷', style: 'under', pts: 18, cd: 400, g: 4, teeth: [[1, .3], [2, .4], [3, .3]], pop: ['빡!', '콰앙!'] },
+  slipper: { e: '🩴', l: '슬리퍼', style: 'side',  pts: 10, cd: 100, g: 5, teeth: [[0, .25], [1, .75]], pop: ['찰싹!', '철썩!'] },
+  pan:     { e: '🍳', l: '프라이팬', style: 'side', pts: 20, cd: 450, g: 4, teeth: [[2, .7], [3, .3]], pop: ['텅!!', '띠잉~'] },
+  daepa:   { e: '🥬', l: '대파',   style: 'side',  pts: 7,  cd: 70,  g: 9, teeth: [[0, .5], [1, .5]], pop: ['파!', '파파팍!', '대파 싸대기!'] },
+  kick:    { e: '🦶', l: '돌려차기', style: 'kick', pts: 22, cd: 550, g: 4, teeth: [[2, .4], [3, .6]], pop: ['뻥!!', '빠악!'] },
+  swatter: { e: '⚡', l: '전기 파리채', style: 'side', pts: 9, cd: 80, g: 8, teeth: [[0, .2], [1, .8]], pop: ['지지직!', '파지직!'], unlock: 100 },
+  fish:    { e: '🐟', l: '동태 싸대기', style: 'side', pts: 16, cd: 300, g: 6, teeth: [[1, .2], [2, .8]], pop: ['철퍼덕!', '동태 맛 좀 봐라!'], unlock: 250 },
+  gold:    { e: '🏆', l: '황금 프라이팬', style: 'side', pts: 25, cd: 400, g: 5, teeth: [[2, .3], [3, .4], [4, .3]], pop: ['황금 텅!!', '띠리링~'], unlock: 500 }
 };
 const toolModels = {};
 {
@@ -269,6 +325,10 @@ const toolModels = {};
   g = G(); { cyl(0.18, 0.16, 0.035, 0x2a2c33, 0, 0, 0, g, 24); cyl(0.15, 0.15, 0.004, 0x55585f, 0, 0.019, 0, g, 24); box(0.035, 0.03, 0.3, 0x1c1c1c, 0, 0.01, 0.31, g); } toolModels.pan = g;
   g = G(); { cyl(0.028, 0.03, 0.24, 0xfaf6ea, 0, -0.18, 0, g, 10); cyl(0.026, 0.028, 0.14, 0xc8e6a8, 0, 0.0, 0, g, 10); [-0.3, 0, 0.3].forEach((r, k) => { const l = cyl(0.016, 0.022, 0.36, 0x3f9a4a, Math.sin(r) * 0.08, 0.24, 0, g, 6); l.rotation.z = r; }); cyl(0.03, 0.03, 0.02, 0xe6dcc2, 0, -0.31, 0, g, 10); } toolModels.daepa = g;
   g = G(); { cyl(0.07, 0.08, 0.42, mat(0x2f3a56), 0, 0.25, 0, g, 10); box(0.13, 0.1, 0.27, 0xf4f4f0, 0, 0, 0.06, g); box(0.135, 0.03, 0.275, 0xe8483a, 0, -0.045, 0.06, g); } toolModels.kick = g;
+  g = G(); { cyl(0.02, 0.02, 0.32, 0x2f6fd8, 0, -0.2, 0, g, 8); const f = box(0.26, 0.3, 0.025, new THREE.MeshLambertMaterial({ color: 0xbfe6ff, emissive: 0x2a6aff, emissiveIntensity: 0.6 }), 0, 0.12, 0, g); f.material.transparent = true; f.material.opacity = 0.85; box(0.28, 0.32, 0.015, glow(0x6ad8ff), 0, 0.12, -0.005, g); } toolModels.swatter = g;
+  g = G(); { const b = sph(0.1, 0x9aa8b8, 0, 0, 0, g, 14); b.scale.set(1, 3.2, 0.6); const t = add(new THREE.ConeGeometry(0.1, 0.16, 4), 0x8a98a8, 0, 0.38, 0, g); t.scale.z = 0.4; sph(0.022, 0x111111, 0.05, -0.22, 0.05, g, 8); } toolModels.fish = g;
+  g = G(); { const gm = new THREE.MeshLambertMaterial({ color: 0xffc83a, emissive: 0x6a4a00 }); cyl(0.19, 0.17, 0.035, gm, 0, 0, 0, g, 24); cyl(0.16, 0.16, 0.004, glow(0xffe68a), 0, 0.019, 0, g, 24); box(0.035, 0.03, 0.3, gm, 0, 0.01, 0.33, g); } toolModels.gold = g;
+  { const big = toolModels.hammer.clone(); big.visible = false; scene.add(big); toolModels.ult = big; }
   Object.values(toolModels).forEach(m => m.traverse(o => { if (o.isMesh) o.castShadow = true; }));
 }
 const swings = [];
@@ -332,6 +392,12 @@ const SND = {
   pan() { [523, 1187, 1893, 2650].forEach((f, i) => tone(f, f * 0.98, 0.9 - i * 0.15, 'sine', 0.28 / (i + 1))); noise(0.06, 'highpass', 2500, 0.6); },
   daepa() { noise(0.14, 'bandpass', 700, 0.5, 0.7); noise(0.06, 'highpass', 2200, 0.5, 1, 0.08); },
   kick() { noise(0.2, 'bandpass', 500, 0.4, 0.5); noise(0.3, 'lowpass', 500, 1, 1, 0.1); tone(170, 35, 0.35, 'sine', 1, 0.1); },
+  swatter() { tone(120, 90, 0.25, 'sawtooth', 0.18); noise(0.2, 'highpass', 4000, 0.4); tone(2400, 1800, 0.1, 'square', 0.06, 0.05); },
+  fish() { noise(0.16, 'lowpass', 1200, 0.9, 0.8); noise(0.1, 'highpass', 2500, 0.3, 1, 0.03); tone(260, 90, 0.14, 'sine', 0.5); },
+  gold() { [784, 1568, 2350, 3136].forEach((f, i) => tone(f, f, 1.0 - i * 0.15, 'sine', 0.25 / (i + 1))); [1320, 1760, 2640].forEach((f, i) => tone(f, f, 0.12, 'triangle', 0.15, 0.1 + i * 0.07)); },
+  ult() { tone(300, 1800, 0.35, 'sawtooth', 0.12); },
+  boom() { noise(0.6, 'lowpass', 300, 1.2); tone(90, 30, 0.7, 'sine', 1.2); noise(0.3, 'bandpass', 1500, 0.6, 0.6, 0.02); },
+  unlock() { [523, 659, 784, 1047, 1319].forEach((f, i) => tone(f, f, 0.18, 'triangle', 0.22, i * 0.08)); },
   miss() { noise(0.22, 'bandpass', 900, 0.25, 0.6); },
   tooth() { tone(1500, 2700, 0.09, 'sine', 0.2, 0.03); },
   land() { tone(2300, 1700, 0.05, 'triangle', 0.08); },
@@ -361,22 +427,43 @@ function say(t, dur = 1.4) { bubble.textContent = t; bubble.classList.add('show'
 // =====================================================================
 let mode = 'menu';         // menu | count | free | rank | result
 let tool = store.get('tool', 'fist'); if (!TOOLS[tool]) tool = 'fist';
-const G0 = () => ({ score: 0, teeth: 0, hits: 0, combo: 0, best: 0, lastHit: 0, time: ROUND });
+const G0 = () => ({ score: 0, teeth: 0, hits: 0, headHits: 0, combo: 0, best: 0, lastHit: 0, time: ROUND, gauge: 0, ults: 0 });
 let game = G0();
-let bowA = 0, bow = 0, dizzy = 0, hurt = 0, shake = 0, idleT = 0, toolCd = {}, refillT = 0, timeNow = 0, blinkT = 3;
+let ko = 0, koA = 0, ult = null, zapT = 0, goldT = 0, bowA = 0, bow = 0, dizzy = 0, hurt = 0, shake = 0, idleT = 0, toolCd = {}, refillT = 0, timeNow = 0, blinkT = 3;
 let lastResult = null, shareBlob = null, shareUrlImg = '';
 
+let totalTeeth = store.get('totalTeeth', 0), seenTools = store.get('seenTools', []);
+const unlocked = k => !TOOLS[k].unlock || totalTeeth >= TOOLS[k].unlock;
+if (!unlocked(tool)) tool = 'fist';
 const toolsEl = $('tools');
-for (const [k, t] of Object.entries(TOOLS)) {
-  const b = document.createElement('button'); b.className = 'tool' + (k === tool ? ' on' : ''); b.dataset.k = k;
-  b.innerHTML = `<span class="e">${t.e}</span><span class="l">${t.l}</span>`;
-  b.onclick = () => { tool = k; store.set('tool', k); [...toolsEl.children].forEach(c => c.classList.toggle('on', c === b)); A(); };
-  toolsEl.appendChild(b);
+function renderTools() {
+  toolsEl.innerHTML = '';
+  for (const [k, t] of Object.entries(TOOLS)) {
+    const lock = !unlocked(k), isNew = !lock && t.unlock && !seenTools.includes(k);
+    const b = document.createElement('button'); b.className = 'tool' + (k === tool ? ' on' : '') + (lock ? ' lock' : '') + (isNew ? ' new' : ''); b.dataset.k = k;
+    b.innerHTML = `<span class="e">${t.e}</span><span class="l">${lock ? '강냉이 ' + t.unlock : t.l}</span>${lock ? '<span class="lk">🔒</span>' : ''}<i class="cdb"></i>`;
+    b.onclick = () => {
+      A();
+      if (lock) { toast(`${t.l}: 강냉이 ${t.unlock - totalTeeth}개 더 털면 열려요`); return; }
+      if (isNew) { seenTools.push(k); store.set('seenTools', seenTools); b.classList.remove('new'); }
+      tool = k; store.set('tool', k); [...toolsEl.children].forEach(c => c.classList.toggle('on', c === b));
+    };
+    toolsEl.appendChild(b);
+  }
+}
+renderTools();
+function addTotalTeeth(n) {
+  const before = totalTeeth; totalTeeth += n; store.set('totalTeeth', totalTeeth);
+  const fresh = Object.entries(TOOLS).filter(([, t]) => t.unlock && before < t.unlock && totalTeeth >= t.unlock);
+  if (fresh.length) { renderTools(); for (const [, t] of fresh) { SND.unlock(); toast(`🔓 새 도구 열림: ${t.e} ${t.l}!`); popText(`🔓 ${t.l}`, innerWidth / 2, innerHeight * 0.32, 't'); } }
 }
 function hud() {
   $('hScore').textContent = game.score.toLocaleString('ko-KR');
   $('hTeeth').textContent = game.teeth; $('hCombo').textContent = game.best;
   $('modeTag').textContent = mode === 'rank' || (mode === 'count' && game.ranked) ? `랭킹전 ${Math.ceil(game.time)}초` : '자유 연습';
+  $('ult').classList.toggle('hide', !(mode === 'rank' || mode === 'free'));
+  const vl = $('vsLine'); const showVs = !!challenge && (mode === 'rank' || mode === 'count');
+  vl.classList.toggle('hide', !showVs); if (showVs) { const d = challenge.score - game.score; vl.classList.toggle('ok', d < 0); vl.textContent = d < 0 ? `✅ ${challenge.nick}님 기록 돌파! (+${(-d).toLocaleString('ko-KR')})` : `🎯 ${challenge.nick}님 ${challenge.score.toLocaleString('ko-KR')}점까지 ${d.toLocaleString('ko-KR')}점`; }
   const tb = $('timebar'); tb.classList.toggle('hide', !(mode === 'rank' || mode === 'count'));
   tb.firstElementChild.style.width = (game.time / ROUND * 100) + '%'; tb.classList.toggle('low', game.time <= 5);
 }
@@ -389,7 +476,8 @@ function hit(cx, cy) {
   A();
   if (mode !== 'free' && mode !== 'rank') return;
   const T = TOOLS[tool]; const now = performance.now();
-  if (now - (toolCd[tool] || 0) < T.cd) return; toolCd[tool] = now;
+  if (ko > 0 || ult) return;
+  if (now - (toolCd[tool] || 0) < T.cd) { const b = toolsEl.querySelector(`[data-k=${tool}]`); if (b) { b.style.transform = 'scale(.92)'; setTimeout(() => b.style.transform = '', 90); } return; } toolCd[tool] = now;
   $('hint').classList.add('hide');
   ndc.set(cx / innerWidth * 2 - 1, -(cy / innerHeight) * 2 + 1); ray.setFromCamera(ndc, camera);
   const targets = [ch.head]; if (photoMesh && photoMesh.visible) targets.push(photoMesh);
@@ -414,6 +502,9 @@ function hit(cx, cy) {
     case 'jab': S.vrx -= 7; S.vrz += push * 5; S.vz -= 1.6; S.vx += push * 0.8; S.open = 1.1; addBruise(local, 'b'); shake = Math.max(shake, 0.05); break;
     case 'slap': S.vry += push * 14; S.vrz += push * 5; S.vx += push * 1.5; S.open = 0.9; addBruise(local, 'hand'); shake = Math.max(shake, 0.04); break;
     case 'slipper': S.vry += push * 12; S.vrz += push * 6; S.vx += push * 1.3; S.open = 1; addBruise(local, 'hand'); shake = Math.max(shake, 0.04); break;
+    case 'swatter': S.vry += push * 8; S.vrz += push * 3; S.open = 1; shake = Math.max(shake, 0.03); zapT = 0.35; break;
+    case 'fish': S.vry += push * 13; S.vrz += push * 6; S.vx += push * 1.6; S.open = 1.1; addBruise(local, 'hand'); shake = Math.max(shake, 0.06); break;
+    case 'gold': S.vry += push * 17; S.vrx -= 5; S.vrz += push * 8; S.vx += push * 2.2; S.open = 1.4; dizzy = 2; addBruise(local, 'pan'); if (Math.random() < 0.4) addBruise(local.clone().add(new THREE.Vector3(rand(-.1, .1), rand(-.1, .1), 0)), 'plaster'); shake = 0.13; goldT = 0.6; break;
     case 'daepa': S.vry += push * 9; S.vrz += push * 3; S.open = 0.8; shake = Math.max(shake, 0.02); break;
     case 'pan': S.vry += push * 16; S.vrx -= 5; S.vrz += push * 7; S.vx += push * 2; S.open = 1.3; dizzy = 1.8; addBruise(local, 'pan'); if (Math.random() < 0.35) addBruise(local.clone().add(new THREE.Vector3(rand(-.1, .1), rand(-.1, .1), 0)), 'plaster'); shake = 0.12; break;
     case 'top': S.sq = 0.6; S.vsq = 0; S.vy -= 2.2; S.open = 1.25; dizzy = 2.2; dir.set(push * 0.4, -0.4, 0); addBruise(new THREE.Vector3(rand(-0.12, 0.12), ch.R, rand(-0.05, 0.1)), 'bump'); shake = Math.max(shake, 0.04); break;
@@ -422,6 +513,7 @@ function hit(cx, cy) {
   }
   ch.arms.forEach(a => { a.vz += rand(-14, 14); a.vx += rand(-10, 4); });
   SND[tool](); hurt = 0.45; idleT = 0;
+  game.headHits++; updateDamage(); addGauge(T.g);
   game.score += Math.round(T.pts * mult);
   popText(pick(T.pop), cx, cy - 10);
   // 강냉이 빠지기
@@ -433,6 +525,7 @@ function hit(cx, cy) {
     const t = left.splice(Math.floor(Math.random() * left.length), 1)[0];
     spawnTooth(t, dir); t.visible = false; game.teeth++; game.score += Math.round(100 * mult);
   }
+  if (n) { addTotalTeeth(n); addGauge(n * 5); }
   if (n) { SND.tooth(); const hp = toScreen(hc.clone().add(new THREE.Vector3(0, -0.45, 0))); popText(`강냉이 +${n}`, hp.x, hp.y, 't'); }
   if (!ch.teeth.some(t => t.visible) && refillT <= 0) {
     game.score += Math.round(500 * mult); refillT = 0.9; say('이빨이 업써…', 1.2);
@@ -460,7 +553,7 @@ function refill(instant) {
   if (!instant) { SND.refill(); say('새 이빨 장착 완료! 😁', 1.2); const f = $('flash'); f.style.opacity = 0.35; setTimeout(() => f.style.opacity = 0, 120); }
 }
 function clearFloor() { flying.forEach(o => scene.remove(o.m)); flying.length = 0; }
-function resetChar() { ch.bruises.clear(); dizzy = 0; bow = 0; ch.sign.visible = false; refill(true); applyTarget(); }
+function resetChar() { ch.bruises.clear(); dizzy = 0; bow = 0; ko = 0; ult = null; toolModels.ult.visible = false; ch.sign.visible = false; refill(true); applyTarget(); updateDamage(); const u = $('ult'); u.classList.remove('ready'); u.style.setProperty('--p', '0%'); }
 function show(id, on) { $(id).classList.toggle('hide', !on); }
 function startGame(ranked) {
   A(); saveNick();
@@ -495,6 +588,7 @@ async function endRound() {
     const parts = []; if (res.today) parts.push(`오늘 ${res.today}위`); if (res.all) parts.push(`역대 ${res.all}위`);
     $('rRank').textContent = (res.best ? '🎉 ' : '') + (parts.join(' · ') || '랭킹 100위 밖이에요') + (res.best ? '!' : ` (내 최고 ${res.myBest.toLocaleString('ko-KR')}점)`);
   } else if (res) { $('rRank').textContent = res.localBest ? '🎉 내 최고 기록!' : `내 최고 기록 ${res.myBest.toLocaleString('ko-KR')}점`; }
+  if (challenge) { const d = challenge.score - r.score; $('rRank').textContent += d < 0 ? `  ·  🎉 ${challenge.nick}님 기록 돌파!` : `  ·  😭 ${challenge.nick}님보다 ${d.toLocaleString('ko-KR')}점 부족`; }
   try { await makeShareCard(r); $('cert').src = shareUrlImg; } catch {}
 }
 
@@ -554,7 +648,8 @@ $('bClose').onclick = () => show('board', false);
 // 결과 공유 카드
 // =====================================================================
 function gameUrl() { return /^https?:$/.test(location.protocol) && !/claude|anthropic|usercontent/.test(location.hostname) ? location.origin + '/smash/' : location.href.split('#')[0]; }
-function shareText(r) { return `🌽 '${r.target}' 강냉이 ${r.teeth}개 털었다! (${r.score.toLocaleString('ko-KR')}점 · ${titleOf(r.teeth).replace(/^\S+\s/, '')})\n너도 털어봐 👉 ${gameUrl()}`; }
+function challengeUrl(r) { return gameUrl() + `?vs=${encodeURIComponent(r.nick)}&s=${r.score}`; }
+function shareText(r) { return `🌽 '${r.target}' 강냉이 ${r.teeth}개 털었다! (${r.score.toLocaleString('ko-KR')}점 · ${titleOf(r.teeth).replace(/^\S+\s/, '')})\n🔥 도전장: 내 점수 넘어볼 사람? 👉 ${challengeUrl(r)}`; }
 function rrect(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
 function wrapLines(g, text, maxW) {
   const out = []; let line = '';
@@ -615,7 +710,7 @@ async function makeShareCard(r) {
   g.beginPath(); g.arc(0, 0, 50, 0, 7); g.stroke(); g.lineWidth = 2; g.beginPath(); g.arc(0, 0, 42, 0, 7); g.stroke();
   g.textAlign = 'center'; g.font = '900 24px "Noto Sans KR",sans-serif'; g.fillText('강냉이', 0, -12); g.fillText('털기 인증', 0, 18); g.restore();
   g.restore();
-  g.textAlign = 'center'; g.fillStyle = '#9aa3bd'; g.font = '700 30px "Noto Sans KR",sans-serif'; g.fillText('너도 털어봐 👉 ' + gameUrl().replace(/^https?:\/\//, ''), W / 2, H - 45);
+  g.textAlign = 'center'; g.fillStyle = '#9aa3bd'; g.font = '700 30px "Noto Sans KR",sans-serif'; g.fillText('🔥 내 점수 넘어봐 👉 ' + gameUrl().replace(/^https?:\/\//, ''), W / 2, H - 45);
   shareUrlImg = c.toDataURL('image/png');
   shareBlob = await new Promise(res => c.toBlob(res, 'image/png'));
 }
@@ -628,7 +723,7 @@ $('rShare').onclick = async () => {
   if (!lastResult) return; const text = shareText(lastResult);
   try {
     if (shareBlob && navigator.canShare) { const file = new File([shareBlob], 'kangnaengi.png', { type: 'image/png' }); if (navigator.canShare({ files: [file] })) { await navigator.share({ files: [file], title: '강냉이 털기 3D', text }); return; } }
-    if (navigator.share) { await navigator.share({ title: '강냉이 털기 3D', text, url: gameUrl() }); return; }
+    if (navigator.share) { await navigator.share({ title: '강냉이 털기 3D', text }); return; }
   } catch (e) { if (e && e.name === 'AbortError') return; }
   $('sTitle').textContent = '📤 결과 공유'; $('shareImg').src = shareUrlImg; show('share', true);
 };
@@ -745,6 +840,7 @@ $('bPhoto').onclick = openPhoto;
 $('bSound').textContent = soundOn ? '🔊' : '🔇';
 $('bSound').onclick = () => { soundOn = !soundOn; store.set('sound', soundOn); $('bSound').textContent = soundOn ? '🔊' : '🔇'; A(); };
 nickEl.addEventListener('keydown', e => { if (e.key === 'Enter') { nickEl.blur(); } });
+if (challenge) { const b = $('vsBan'); b.innerHTML = `🔥 <b>${challenge.nick.replace(/[&<>]/g, '')}</b>님이 도전장을 보냈어요!<br>30초 랭킹전에서 <b>${challenge.score.toLocaleString('ko-KR')}점</b>을 넘어 보세요.`; b.classList.remove('hide'); }
 hud();
 api('/api/smash/rank').then(b => { boardCache = b; }).catch(() => { online = false; });
 
@@ -777,9 +873,22 @@ function frame() {
   ch.headG.rotation.set(S.rx * 0.5, S.ry * 0.4, S.rz * 0.4);
   ch.headG.position.set(S.x * 0.12, 0.36 + S.y * 0.06 + breathe, S.z * 0.1);
   ch.headG.scale.set(1 + (1 - S.sq) * 0.5, S.sq, 1 + (1 - S.sq) * 0.5);
-  ch.body.rotation.set(S.lean * 0.12, 0, S.leanX * 0.5 + S.rz * 0.08);
+  ch.body.rotation.set(S.lean * 0.12 - koA * 1.35, 0, S.leanX * 0.5 + S.rz * 0.08);
+  ch.headG.scale.x *= 1 + (ch.swell || 0) * 0.06;
   ch.body.position.y = breathe * 0.5;
   for (const a of ch.arms) { const tz = a.rz * (1 - bowA) + a.s * 0.1 * bowA, tx = -1.0 * bowA; a.vz += (-(a.pv.rotation.z - tz) * 60 - a.vz * 5) * dt; a.pv.rotation.z += a.vz * dt; a.vx += (-(a.pv.rotation.x - tx) * 60 - a.vx * 5) * dt; a.pv.rotation.x += a.vx * dt; if (mode === 'menu' || mode === 'free') a.pv.rotation.z += Math.sin(timeNow * 2 + a.s) * 0.002; }
+  // 필살기: 하늘에서 대형 뿅망치
+  if (ult) {
+    ult.t += dt; const m = toolModels.ult, p = ult.at; const k = Math.min(1, ult.t / 0.45);
+    m.scale.setScalar(4.2); m.position.set(p.x, p.y + 0.62 * 4.2 * 0 + (1 - k * k) * 4 + 0.36, p.z); m.rotation.set(0, 0, 0);
+    if (!ult.hit && k >= 1) { ult.hit = true; ultImpact(); }
+    if (ult.t > 0.9) { m.visible = false; ult = null; }
+  }
+  if (ko > 0) { ko -= dt; }
+  koA += ((ko > 0.3 ? 1 : 0) - koA) * Math.min(1, dt * (ko > 0.3 ? 9 : 4));
+  zapT -= dt; goldT -= dt;
+  ch.head.material.emissive && (ch.head.material.emissive.setHex(zapT > 0 && Math.sin(timeNow * 60) > 0 ? 0x3a6aff : goldT > 0 ? 0x4a3a00 : 0x000000));
+  for (const b of toolsEl.children) { const k = b.dataset.k, cd = TOOLS[k].cd, el = performance.now() - (toolCd[k] || 0); const bar = b.lastElementChild; if (bar) bar.style.transform = `scaleX(${el < cd ? 1 - el / cd : 0})`; }
   // 이빨 다시 나기
   if (refillT > 0) { refillT -= dt; if (refillT <= 0) refill(false); }
   for (const t of ch.teeth) if (t.userData.pop < 1) t.userData.pop = Math.min(1, t.userData.pop + dt * 5);
@@ -801,7 +910,7 @@ function frame() {
     m.position.lerpVectors(s.from, s.to, clamp(k, 0, 1) * 0.92 + 0.08 * (s.t < 0.07 ? 0 : 1));
     m.rotation.set(0, 0, 0);
     if (s.st === 'jab') { m.lookAt(s.to.x, s.to.y, s.to.z - 5); }
-    else if (s.st === 'side') { m.rotation.set(0, s.side > 0 ? -Math.PI / 2 : Math.PI / 2, (1 - clamp(k, 0, 1)) * -s.side * 0.9); if (tool === 'pan' || s.m === toolModels.pan) m.rotation.x = Math.PI / 2; if (s.m === toolModels.daepa) m.rotation.z = s.side * (1.2 - k * 0.6); }
+    else if (s.st === 'side') { m.rotation.set(0, s.side > 0 ? -Math.PI / 2 : Math.PI / 2, (1 - clamp(k, 0, 1)) * -s.side * 0.9); if (s.m === toolModels.pan || s.m === toolModels.gold) m.rotation.x = Math.PI / 2; if (s.m === toolModels.daepa) m.rotation.z = s.side * (1.2 - k * 0.6); }
     else if (s.st === 'top') { m.rotation.x = -(1 - clamp(k, 0, 1)) * 1.3; m.rotation.z = 0; }
     else if (s.st === 'under') { m.rotation.x = 0.3; }
     else { m.rotation.z = s.side * 1.3; m.rotation.y = s.side * -0.4; }
