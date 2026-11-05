@@ -145,8 +145,13 @@ const ch = {};
   const hip = sph(0.2, pants, 0, 0.44, 0, body); hip.scale.set(1.15, 0.6, 0.85);
   const torso = add(new THREE.CapsuleGeometry(0.23, 0.28, 6, 16), shirt, 0, 0.7, 0, body); torso.scale.set(1.05, 1, 0.82);
   // 셔츠 글자
-  const tee = cTex(128, 64, g => { g.fillStyle = '#fff'; g.font = '900 30px "Noto Sans KR",sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('강냉이', 64, 34); });
-  const logo = new THREE.Mesh(new THREE.PlaneGeometry(0.26, 0.13), new THREE.MeshLambertMaterial({ map: tee, transparent: true })); logo.position.set(0, 0.74, 0.205); body.add(logo);
+  const tee = cTex(256, 128, g => {}); ch.tee = tee;
+  const logo = new THREE.Mesh(new THREE.PlaneGeometry(0.34, 0.17), new THREE.MeshLambertMaterial({ map: tee, transparent: true })); logo.position.set(0, 0.74, 0.205); body.add(logo);
+  // 반성문 팻말 (끝나면 들고 있음)
+  const sign = new THREE.Group(); sign.position.set(0, 0.62, 0.36); sign.rotation.x = -0.12; sign.visible = false; body.add(sign); ch.sign = sign;
+  ch.signTex = cTex(512, 600, g => {});
+  const sp = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.586), new THREE.MeshLambertMaterial({ map: ch.signTex })); sp.position.z = 0.012; sign.add(sp);
+  box(0.54, 0.626, 0.02, 0x8a6a48, 0, 0, 0, sign);
   ch.arms = [-1, 1].map(s => {
     const pv = new THREE.Group(); pv.position.set(0.27 * s, 0.9, 0); body.add(pv);
     sph(0.085, shirt, 0, -0.03, 0, pv, 12); cyl(0.055, 0.05, 0.3, skin, 0, -0.2, 0, pv, 10); sph(0.07, skin, 0, -0.37, 0, pv, 12);
@@ -203,6 +208,27 @@ const ch = {};
   for (let k = 0; k < 3; k++) { const st = add(new THREE.OctahedronGeometry(0.06), glow(0xffd23a), 0, 0, 0, ch.stars); st.scale.y = 1.4; }
   root.traverse(m => { if (m.isMesh && m !== sh && m.material.type === 'MeshLambertMaterial') m.castShadow = true; });
 }
+function setShirtName(name) {
+  const c = ch.tee.image, g = c.getContext('2d'); g.clearRect(0, 0, 256, 128); g.fillStyle = '#fff'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  let fs = 64; g.font = `900 ${fs}px "Noto Sans KR",sans-serif`; while (g.measureText(name).width > 236 && fs > 20) { fs -= 4; g.font = `900 ${fs}px "Noto Sans KR",sans-serif`; }
+  g.fillText(name, 128, 66); ch.tee.needsUpdate = true;
+}
+function wrapK(g, text, maxW) { const out = []; let line = ''; for (const chr of Array.from(text)) { const t = line + chr; if (g.measureText(t).width > maxW && line) { out.push(line); line = chr.trim() ? chr : ''; } else line = t; } if (line) out.push(line); return out; }
+function drawSign() {
+  const c = ch.signTex.image, g = c.getContext('2d'), W = 512, H = 600;
+  g.fillStyle = '#fbf6ea'; g.fillRect(0, 0, W, H); g.strokeStyle = '#6b4a2e'; g.lineWidth = 6; g.strokeRect(14, 14, W - 28, H - 28);
+  g.fillStyle = '#2a1c0e'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.font = '700 50px Gaegu,"Noto Sans KR",sans-serif'; g.fillStyle = '#6b5a44'; g.fillText('반성문', W / 2, 80);
+  g.fillStyle = '#2a1c0e'; g.font = '700 68px Gaegu,"Noto Sans KR",sans-serif'; g.fillText('내가 잘못했어', W / 2, 170);
+  g.font = '700 46px Gaegu,"Noto Sans KR",sans-serif'; g.fillStyle = '#6b5a44'; g.fillText('이유', W / 2, 270);
+  g.strokeStyle = '#8a7458'; g.lineWidth = 4; g.strokeRect(50, 305, W - 100, 230);
+  g.fillStyle = '#2a1c0e'; g.font = '700 40px Gaegu,"Noto Sans KR",sans-serif';
+  const lines = wrapK(g, tWhy(), W - 140).slice(0, 4); lines.forEach((l, i) => g.fillText(l, W / 2, 420 - (lines.length - 1) * 25 + i * 50));
+  ch.signTex.needsUpdate = true;
+}
+function applyTarget() { setShirtName(tName()); drawSign(); }
+document.fonts && document.fonts.ready.then(applyTarget);
+
 // 머리 · 몸 흔들림 상태 (스프링)
 const S = { rx: 0, vrx: 0, rz: 0, vrz: 0, ry: 0, vry: 0, x: 0, vx: 0, y: 0, vy: 0, z: 0, vz: 0, sq: 1, vsq: 0, open: 0.4, vopen: 0, lean: 0, vlean: 0, leanX: 0, vleanX: 0 };
 function spring(key, target, k, c, dt) { const v = 'v' + key; S[v] += (-(S[key] - target) * k - S[v] * c) * dt; S[key] += S[v] * dt; }
@@ -326,6 +352,8 @@ const LINES_PAN = ['띠요오옹…', '종소리 들려…', '별이 보여…']
 const LINES_DAEPA = ['대파는 반칙이지!', '파 냄새…', '오늘 저녁 파전?'];
 const LINES_TAUNT = ['그게 다야?', '하나도 안 아픈데?', '모기 물린 줄', '30초 금방 간다~', '에헤이~ 약하다'];
 let speech = 0;
+const short = (t, n = 12) => Array.from(t).length > n ? Array.from(t).slice(0, n).join('') + '…' : t;
+const whyLines = () => [`${short(tWhy())}? 오해야!`, `${short(tWhy())} 안 할게요ㅠ`, `내가 언제 ${short(tWhy(), 9)}…`, '다시는 안 그럴게!', '잘못했다고오오'];
 function say(t, dur = 1.4) { bubble.textContent = t; bubble.classList.add('show'); speech = dur; }
 
 // =====================================================================
@@ -335,7 +363,7 @@ let mode = 'menu';         // menu | count | free | rank | result
 let tool = store.get('tool', 'fist'); if (!TOOLS[tool]) tool = 'fist';
 const G0 = () => ({ score: 0, teeth: 0, hits: 0, combo: 0, best: 0, lastHit: 0, time: ROUND });
 let game = G0();
-let dizzy = 0, hurt = 0, shake = 0, idleT = 0, toolCd = {}, refillT = 0, timeNow = 0, blinkT = 3;
+let bowA = 0, bow = 0, dizzy = 0, hurt = 0, shake = 0, idleT = 0, toolCd = {}, refillT = 0, timeNow = 0, blinkT = 3;
 let lastResult = null, shareBlob = null, shareUrlImg = '';
 
 const toolsEl = $('tools');
@@ -409,7 +437,7 @@ function hit(cx, cy) {
   if (!ch.teeth.some(t => t.visible) && refillT <= 0) {
     game.score += Math.round(500 * mult); refillT = 0.9; say('이빨이 업써…', 1.2);
     const hp = toScreen(hc.clone().add(new THREE.Vector3(0, 0.6, 0))); popText('🌽 완판 보너스 +500', hp.x, hp.y, 't');
-  } else if (Math.random() < (n ? 0.5 : 0.25)) say(tool === 'pan' ? pick(LINES_PAN) : tool === 'daepa' && Math.random() < 0.6 ? pick(LINES_DAEPA) : pick(LINES));
+  } else if (Math.random() < (n ? 0.5 : 0.25)) say(tgt.why && Math.random() < 0.35 ? pick(whyLines()) : tool === 'pan' ? pick(LINES_PAN) : tool === 'daepa' && Math.random() < 0.6 ? pick(LINES_DAEPA) : pick(LINES));
   hud();
 }
 function swingTo(p, side) {
@@ -432,18 +460,18 @@ function refill(instant) {
   if (!instant) { SND.refill(); say('새 이빨 장착 완료! 😁', 1.2); const f = $('flash'); f.style.opacity = 0.35; setTimeout(() => f.style.opacity = 0, 120); }
 }
 function clearFloor() { flying.forEach(o => scene.remove(o.m)); flying.length = 0; }
-function resetChar() { ch.bruises.clear(); dizzy = 0; refill(true); }
+function resetChar() { ch.bruises.clear(); dizzy = 0; bow = 0; ch.sign.visible = false; refill(true); applyTarget(); }
 function show(id, on) { $(id).classList.toggle('hide', !on); }
 function startGame(ranked) {
   A(); saveNick();
-  show('start', false); show('result', false); show('board', false);
+  show('start', false); show('result', false); show('board', false); show('form', false);
   game = G0(); game.ranked = ranked; resetChar(); clearFloor(); hud();
-  if (!ranked) { mode = 'free'; hud(); $('hint').classList.remove('hide'); say('덤벼라!', 1.2); return; }
+  if (!ranked) { mode = 'free'; hud(); $('hint').classList.remove('hide'); say(tgt.why ? `뭐? 내가 ${short(tWhy())}? 기억 안 나는데~` : '덤벼라!', 2); return; }
   mode = 'count'; hud(); let n = 3;
   const tick = () => {
     const c = $('count');
     if (n > 0) { c.innerHTML = `<span>${n}</span>`; SND.beep(false); n--; setTimeout(tick, 800); }
-    else { c.innerHTML = '<span>시작!</span>'; SND.beep(true); mode = 'rank'; game.time = ROUND; hud(); setTimeout(() => { if (c.firstChild) c.innerHTML = ''; }, 800); say(pick(LINES_TAUNT), 1.5); }
+    else { c.innerHTML = '<span>시작!</span>'; SND.beep(true); mode = 'rank'; game.time = ROUND; hud(); setTimeout(() => { if (c.firstChild) c.innerHTML = ''; }, 800); say(tgt.why ? `뭐? 내가 ${short(tWhy())}? 기억 안 나는데~` : pick(LINES_TAUNT), 2); }
   };
   tick();
 }
@@ -455,8 +483,8 @@ function titleOf(t) {
 async function endRound() {
   mode = 'result'; SND.end(); $('count').innerHTML = '<span style="font-size:72px">끝!</span>';
   const r = { target: getTarget(), nick: getNick(), score: game.score, teeth: game.teeth, combo: game.best, hits: game.hits };
-  lastResult = r; say('살았다…', 2);
-  await new Promise(res => setTimeout(res, 900)); $('count').innerHTML = '';
+  lastResult = r; say('잘못했어요… 😭', 3); bow = 1; ch.sign.visible = true; drawSign(); refillT = 0;
+  await new Promise(res => setTimeout(res, 1400)); $('count').innerHTML = '';
   // 공유 이미지 만들기 (사진은 빼고)
   try { await makeShareCard(r); } catch (e) { console.warn(e); }
   $('cert').src = shareUrlImg;
@@ -477,9 +505,12 @@ const nickEl = $('nick');
 nickEl.value = store.get('nick', '');
 const cleanNick = s => String(s || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 12);
 function getNick() { return cleanNick(nickEl.value) || store.get('anon', '') || (() => { const a = '익명의 강냉이헌터' + Math.floor(rand(10, 99)); store.set('anon', a); return a; })(); }
-function saveNick() { store.set('nick', cleanNick(nickEl.value)); store.set('target', cleanNick($('target').value)); }
-$('target').value = store.get('target', '');
-function getTarget() { return String($('target').value || '').replace(/[\u0000-\u001f<>]/g, '').trim().slice(0, 14) || '스트레스'; }
+function saveNick() { store.set('nick', cleanNick(nickEl.value)); }
+const clean = (v, n) => String(v || '').replace(/[\u0000-\u001f<>]/g, ' ').replace(/\s+/g, ' ').trim().slice(0, n);
+let tgt = store.get('tgt', { name: '', why: '' });
+const tName = () => tgt.name || '스트레스';
+const tWhy = () => tgt.why || '나를 힘들게 함';
+function getTarget() { return tName(); }
 let online = null;
 async function api(path, body) {
   const ctl = new AbortController(); const tm = setTimeout(() => ctl.abort(), 6000);
@@ -523,7 +554,7 @@ $('bClose').onclick = () => show('board', false);
 // 결과 공유 카드
 // =====================================================================
 function gameUrl() { return /^https?:$/.test(location.protocol) && !/claude|anthropic|usercontent/.test(location.hostname) ? location.origin + '/smash/' : location.href.split('#')[0]; }
-function shareText(r) { return `🌽 30초 동안 '${r.target}' 강냉이 ${r.teeth}개 털었다! (${r.score.toLocaleString('ko-KR')}점 · ${titleOf(r.teeth).replace(/^\S+\s/, '')})\n너도 털어봐 👉 ${gameUrl()}`; }
+function shareText(r) { return `🌽 '${r.target}' 강냉이 ${r.teeth}개 털었다! (${r.score.toLocaleString('ko-KR')}점 · ${titleOf(r.teeth).replace(/^\S+\s/, '')})\n너도 털어봐 👉 ${gameUrl()}`; }
 function rrect(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
 function wrapLines(g, text, maxW) {
   const out = []; let line = '';
@@ -547,9 +578,9 @@ async function makeShareCard(r) {
   const W = 1080, H = 1560, c = document.createElement('canvas'); c.width = W; c.height = H; const g = c.getContext('2d');
   const bg = g.createLinearGradient(0, 0, 0, H); bg.addColorStop(0, '#2a1c38'); bg.addColorStop(1, '#0b0d14'); g.fillStyle = bg; g.fillRect(0, 0, W, H);
   // 장면 (털린 캐릭터)
-  const hc = new THREE.Vector3(); ch.headG.getWorldPosition(hc); const sp = toScreen(hc.clone().add(new THREE.Vector3(0, -0.15, 0)));
+  const hc = new THREE.Vector3(); ch.headG.getWorldPosition(hc); const sp = toScreen(hc.clone().add(new THREE.Vector3(0, -0.32, 0)));
   const bx = 40, by = 40, bw = 1000, bh = 800, sx = shot.width / innerWidth;
-  const k = Math.max(bw / shot.width, bh / shot.height) * 1.15; const cw = bw / k, chh = bh / k;
+  const k = Math.max(bw / shot.width, bh / shot.height) * 1.0; const cw = bw / k, chh = bh / k;
   let ox = sp.x * sx - cw / 2, oy = sp.y * sx - chh / 2; ox = clamp(ox, 0, shot.width - cw); oy = clamp(oy, 0, shot.height - chh);
   g.save(); rrect(g, bx, by, bw, bh, 36); g.clip(); g.drawImage(shot, ox, oy, cw, chh, bx, by, bw, bh);
   const vg = g.createLinearGradient(0, by, 0, by + 220); vg.addColorStop(0, 'rgba(11,13,20,.7)'); vg.addColorStop(1, 'rgba(11,13,20,0)'); g.fillStyle = vg; g.fillRect(bx, by, bw, 220);
@@ -571,7 +602,7 @@ async function makeShareCard(r) {
   g.fillStyle = '#2a1c0e'; g.font = '900 64px "Noto Sans KR",sans-serif'; g.fillText('강냉이 털기 수료증', W / 2, py + 110);
   g.fillStyle = '#b8452e'; g.font = '700 30px "Noto Sans KR",sans-serif'; g.fillText(titleOf(r.teeth), W / 2, py + 170);
   g.fillStyle = '#3a2a1a'; g.font = '500 36px "Noto Sans KR",sans-serif';
-  const body = `귀하 ${r.nick} 님은 30초 동안 '${r.target}'의 강냉이 ${r.teeth}개를 완벽하게 털어 냈으므로, 이에 따라 스트레스도 털렸음을 공식 확인하며 본 수료증을 수여합니다.`;
+  const body = `귀하 ${r.nick} 님은 '${r.target}'(을)를 완벽하게 털어 강냉이 ${r.teeth}개를 수확했으므로, 이에 따라 스트레스도 털렸음을 공식 확인하며 본 수료증을 수여합니다.`;
   wrapLines(g, body, pw - 180).forEach((l, i) => g.fillText(l, W / 2, py + 245 + i * 56));
   g.font = '900 34px "Noto Sans KR",sans-serif'; g.fillStyle = '#2a1c0e';
   const rk = r.rank && r.rank.online && r.rank.today ? `  ·  오늘 ${r.rank.today}위` : '';
@@ -656,9 +687,9 @@ function loadFile(f) {
 }
 $('pFile').onchange = e => { loadFile(e.target.files[0]); e.target.value = ''; };
 $('pFile2').onchange = e => { loadFile(e.target.files[0]); e.target.value = ''; };
-$('pApply').onclick = () => { if (pm) applyPhoto({ ...pm }); show('photo', false); };
+$('pApply').onclick = () => { if (pm) applyPhoto({ ...pm }); show('photo', false); if (!$('form').classList.contains('hide')) formStep(3); };
 $('pCancel').onclick = () => show('photo', false);
-$('pRemove').onclick = () => { applyPhoto(null); show('photo', false); };
+$('pRemove').onclick = () => { applyPhoto(null); show('photo', false); if (!$('form').classList.contains('hide')) formStep(3); };
 $('pZ').oninput = () => { if (pm) { pm.s = +$('pZ').value; drawPreview(); } };
 $('pZo').onclick = () => { if (pm) { pm.s = Math.max(0.5, pm.s / 1.1); $('pZ').value = pm.s; drawPreview(); } };
 $('pZi').onclick = () => { if (pm) { pm.s = Math.min(4, pm.s * 1.1); $('pZ').value = pm.s; drawPreview(); } };
@@ -682,8 +713,27 @@ $('pRot').onclick = () => { if (pm) { pm.rot += Math.PI / 2; drawPreview(); } };
 // =====================================================================
 // 버튼
 // =====================================================================
-$('goRank').onclick = () => startGame(true);
-$('goFree').onclick = () => startGame(false);
+let formRanked = true, fStep = 1;
+const BUBS = ['', '어서와…<br>뭐? 누가 너를 힘들게 했다고?', '너한테<br>어케 했는데?', '사진 있으면 보여줘 봐.<br>없어도 괜찮아!'];
+function formStep(n) {
+  fStep = n; [1, 2, 3].forEach(i => show('fs' + i, i === n));
+  $('fBub').innerHTML = BUBS[n]; document.querySelectorAll('.psteps i').forEach((d, i) => d.classList.toggle('on', i < n));
+  $('fNext').textContent = n === 3 ? '작성 완료!' : '다음!'; $('fPrev').textContent = n === 1 ? '취소' : '이전';
+  $('fPhotoState').textContent = photo ? '✅ 사진이 들어갔어요' : '사진은 없어도 돼요'; $('fPhoto').textContent = photo ? '📷 사진 바꾸기' : '📷 사진도 넣기';
+  if (n === 1) setTimeout(() => $('fName').focus(), 50);
+}
+function openForm(ranked) { A(); saveNick(); formRanked = ranked; $('fName').value = tgt.name; $('fWhy').value = tgt.why; show('start', false); show('result', false); show('form', true); formStep(1); }
+$('fNext').onclick = () => {
+  if (fStep === 1) { tgt.name = clean($('fName').value, 10); if (!tgt.name) { $('fBub').innerHTML = '이름이 없으면<br>누굴 털어? 🤨'; return; } $('fBub').innerHTML = '빠직…'; return setTimeout(() => formStep(2), 350); }
+  if (fStep === 2) { tgt.why = clean($('fWhy').value, 40); return formStep(3); }
+  store.set('tgt', tgt); show('form', false); $('fBub').innerHTML = '좋아, 맡겨만 줘!'; startGame(formRanked);
+};
+$('fPrev').onclick = () => { if (fStep === 1) { show('form', false); show('start', true); } else formStep(fStep - 1); };
+$('fName').addEventListener('keydown', e => { if (e.key === 'Enter') $('fNext').click(); });
+$('fPhoto').onclick = openPhoto;
+$('goRank').onclick = () => openForm(true);
+$('goFree').onclick = () => openForm(false);
+$('rNew').onclick = () => openForm(true);
 $('goBoard').onclick = openBoard;
 $('rAgain').onclick = () => startGame(true);
 $('rBoard').onclick = openBoard;
@@ -721,14 +771,15 @@ function frame() {
   spring('sq', 1, 260, 12, dt); spring('lean', 0, 60, 7, dt); spring('leanX', 0, 50, 6, dt);
   const baseOpen = ch.teeth.some(t => t.visible) ? 0.32 : 0.75; spring('open', baseOpen, 90, 9, dt);
   S.rx = clamp(S.rx, -1.1, 0.8); S.ry = clamp(S.ry, -1.3, 1.3); S.rz = clamp(S.rz, -0.9, 0.9); S.leanX = clamp(S.leanX, -0.6, 0.6);
+  bowA += ((bow ? 1 : 0) - bowA) * Math.min(1, dt * 5);
   const breathe = Math.sin(timeNow * 2.2) * 0.012;
-  ch.neck.rotation.set(S.rx * 0.5 + Math.sin(timeNow * 1.3) * 0.02, S.ry * 0.6, S.rz * 0.6 + (dizzy > 0 ? Math.sin(timeNow * 6) * 0.12 : 0));
+  ch.neck.rotation.set(S.rx * 0.5 + Math.sin(timeNow * 1.3) * 0.02 + bowA * 0.45, S.ry * 0.6, S.rz * 0.6 + (dizzy > 0 ? Math.sin(timeNow * 6) * 0.12 : 0));
   ch.headG.rotation.set(S.rx * 0.5, S.ry * 0.4, S.rz * 0.4);
   ch.headG.position.set(S.x * 0.12, 0.36 + S.y * 0.06 + breathe, S.z * 0.1);
   ch.headG.scale.set(1 + (1 - S.sq) * 0.5, S.sq, 1 + (1 - S.sq) * 0.5);
   ch.body.rotation.set(S.lean * 0.12, 0, S.leanX * 0.5 + S.rz * 0.08);
   ch.body.position.y = breathe * 0.5;
-  for (const a of ch.arms) { a.vz += (-(a.pv.rotation.z - a.rz) * 60 - a.vz * 5) * dt; a.pv.rotation.z += a.vz * dt; a.vx += (-a.pv.rotation.x * 60 - a.vx * 5) * dt; a.pv.rotation.x += a.vx * dt; if (mode === 'menu' || mode === 'free') a.pv.rotation.z += Math.sin(timeNow * 2 + a.s) * 0.002; }
+  for (const a of ch.arms) { const tz = a.rz * (1 - bowA) + a.s * 0.1 * bowA, tx = -1.0 * bowA; a.vz += (-(a.pv.rotation.z - tz) * 60 - a.vz * 5) * dt; a.pv.rotation.z += a.vz * dt; a.vx += (-(a.pv.rotation.x - tx) * 60 - a.vx * 5) * dt; a.pv.rotation.x += a.vx * dt; if (mode === 'menu' || mode === 'free') a.pv.rotation.z += Math.sin(timeNow * 2 + a.s) * 0.002; }
   // 이빨 다시 나기
   if (refillT > 0) { refillT -= dt; if (refillT <= 0) refill(false); }
   for (const t of ch.teeth) if (t.userData.pop < 1) t.userData.pop = Math.min(1, t.userData.pop + dt * 5);
@@ -781,6 +832,7 @@ function frame() {
     bubble.style.transform = `translate(${clamp(sp.x - 18, 8, innerWidth - bubble.offsetWidth - 8)}px, ${Math.max(110, sp.y - bubble.offsetHeight - 10)}px)`;
     if (speech <= 0) bubble.classList.remove('show');
   }
+  { const nt = $('nameTag'); const on = false; nt.classList.toggle('hide', !on); if (on) { const hc = new THREE.Vector3(); ch.headG.getWorldPosition(hc); const sp = toScreen(hc.add(tmpV.set(0, 0.62, 0))); if (nt.dataset.n !== tgt.name) { nt.dataset.n = tgt.name; nt.innerHTML = '<i>타깃</i>' + tgt.name.replace(/[&<>]/g, ''); } nt.style.transform = `translate(${sp.x - nt.offsetWidth / 2}px, ${Math.max(100, sp.y - 30)}px)`; } }
   const cEl = $('combo'), showC = game.combo >= 3 && performance.now() - game.lastHit < 800 && (mode === 'rank' || mode === 'free');
   cEl.classList.toggle('hide', !showC);
   if (showC) { const m = 1 + Math.min(2, Math.floor(game.combo / 10) * 0.5); cEl.innerHTML = `${game.combo} COMBO${m > 1 ? `<small>점수 x${m}</small>` : ''}`; }
