@@ -12,7 +12,7 @@
 <meta property="og:image" content="/og.png">
 <link rel="icon" href="/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&family=Black+Han+Sans&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;500;700;900&family=Black+Han+Sans&family=Gaegu:wght@400;700&display=swap" rel="stylesheet">
 <script type="importmap">{"imports":{"three":"/vendor/three.module.min.js","three/addons/":"/vendor/jsm/"}}</script>
 <style>
 :root{--ink:#eef0f7;--dim:#9aa3bd;--panel:rgba(14,16,24,.92);--line:rgba(255,255,255,.09);--accent:#ff9a4a;--gold:#e9c46a;--red:#ff5a4a;--st:env(safe-area-inset-top,0px);--sb:env(safe-area-inset-bottom,0px)}
@@ -102,6 +102,25 @@ ol.rank .s{font-weight:900;color:var(--gold)}
 #shareImg{display:block;width:100%;border-radius:14px;margin-top:10px}
 #toast{position:fixed;left:50%;top:calc(90px + var(--st));transform:translateX(-50%);background:rgba(250,246,238,.97);color:#231c16;font-weight:700;padding:9px 16px;border-radius:12px;z-index:9;opacity:0;transition:opacity .25s;pointer-events:none;white-space:nowrap}
 #toast.show{opacity:1}
+.fwrap{width:100%;max-width:400px}
+.fhead{display:flex;align-items:flex-end;gap:8px;margin-bottom:-6px;position:relative;z-index:1}
+.mascot{font-size:78px;line-height:1;filter:drop-shadow(0 6px 10px rgba(0,0,0,.4));animation:bob 1.6s ease-in-out infinite}
+@keyframes bob{50%{transform:translateY(-6px) rotate(-4deg)}}
+.fbub{flex:1;background:#fffdf6;color:#231c16;border:3px solid #2a1c0e;border-radius:26px;padding:12px 14px;font-family:Gaegu,"Noto Sans KR",sans-serif;font-weight:700;font-size:21px;line-height:1.3;text-align:center;margin-bottom:40px;position:relative}
+.fbub:after{content:"";position:absolute;left:-14px;bottom:14px;border:10px solid transparent;border-right:16px solid #2a1c0e;border-left:0}
+.paper{background:#fbf6ea;color:#2a1c0e;border:3px solid #6b4a2e;border-radius:6px 10px 8px 12px;padding:16px 18px 14px;box-shadow:0 10px 30px rgba(0,0,0,.45);transform:rotate(-.6deg);font-family:Gaegu,"Noto Sans KR",sans-serif}
+.ptitle{text-align:center;font-size:22px;color:#7a6a58;font-weight:700}
+.plabel{text-align:center;font-size:32px;font-weight:700;margin:10px 0 8px}
+.pin{width:100%;border:2.5px solid #8a7458;border-radius:6px 12px 6px 10px;background:#fffdf6;padding:12px;font-family:Gaegu,"Noto Sans KR",sans-serif;font-size:24px;font-weight:700;text-align:center;color:#2a1c0e;outline:none;resize:none;user-select:text;-webkit-user-select:text}
+.pin:focus{border-color:#ff7a3a}
+.plink{display:block;margin:8px auto 0;background:none;font-family:Gaegu,"Noto Sans KR",sans-serif;font-size:24px;font-weight:700;color:#2a1c0e;text-decoration:underline}
+.pnote{text-align:center;font-size:15px;color:#7a6a58;line-height:1.35;font-family:"Noto Sans KR",sans-serif}
+.psteps{display:flex;justify-content:center;gap:8px;margin-top:12px}
+.psteps i{width:9px;height:9px;border-radius:50%;background:#d8c8ac}.psteps i.on{background:#ff7a3a}
+.fbtns{display:grid;grid-template-columns:1fr 1.4fr;gap:8px;margin-top:10px}
+.fbtns .fancy{font-size:30px}
+#nameTag{position:fixed;left:0;top:0;font-size:14px;font-weight:900;padding:4px 11px;border-radius:9px;background:rgba(10,12,18,.9);color:#fff;white-space:nowrap;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,.35)}
+#nameTag i{font-style:normal;font-size:11px;font-weight:700;background:#c0453a;border-radius:6px;padding:1px 6px;margin-right:5px}
 #cert{display:block;width:100%;border-radius:14px;box-shadow:0 6px 20px rgba(0,0,0,.4)}
 .row3{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px}
 .fancy{font-family:"Black Han Sans",sans-serif;font-size:24px;background:none;padding:6px 0;letter-spacing:-.5px;-webkit-text-stroke:1.5px #2a1606;transition:transform .08s}
@@ -119,6 +138,7 @@ ol.rank .s{font-weight:900;color:var(--gold)}
 <div id="fx"></div>
 <div id="bubble"></div>
 <div id="combo" class="hide"></div>
+<div id="nameTag" class="hide"></div>
 
 <div id="hud" class="pn">
   <div class="t1"><div class="logo">강냉이 털기 🌽</div><div class="mode" id="modeTag">자유 연습</div></div>
@@ -144,16 +164,33 @@ ol.rank .s{font-weight:900;color:var(--gold)}
 <div id="start" class="overlay">
   <div class="sheet pn">
     <div class="big">강냉이 털기 3D</div>
-    <div class="sub">주먹, 싸대기, 뿅망치, 프라이팬, 대파까지!<br>30초 동안 강냉이를 최대한 많이 털고 랭킹에 도전하세요.</div>
+    <div class="sub">주먹, 싸대기, 뿅망치, 프라이팬, 대파까지!<br>누가 힘들게 했는지 적고, 30초 동안 강냉이를 최대한 많이 털어 보세요.</div>
     <label class="small" for="nick">랭킹에 올라갈 닉네임</label>
     <input class="nick" id="nick" maxlength="12" placeholder="닉네임 (최대 12자)" autocomplete="off">
-    <label class="small" for="target" style="margin-top:10px">오늘 털어버릴 것 <span style="opacity:.7">(수료증에 들어가요)</span></label>
-    <input class="nick" id="target" maxlength="14" placeholder="예: 월요병, 야근, 다이어트 실패" autocomplete="off">
     <button class="btn p" id="goRank">⏱️ 30초 랭킹전</button>
     <div class="row2">
       <button class="btn" id="goFree">🥊 자유 연습</button>
       <button class="btn" id="goBoard">🏆 랭킹 보기</button>
     </div>
+  </div>
+</div>
+
+<!-- 상담 신청서 -->
+<div id="form" class="overlay hide">
+  <div class="fwrap">
+    <div class="fhead"><div class="mascot">🌽</div><div class="fbub" id="fBub">어서와…<br>뭐? 누가 너를 힘들게 했다고?</div></div>
+    <div class="paper">
+      <div class="ptitle">상담 신청서</div>
+      <div id="fs1"><div class="plabel">먼지 적어봐</div><input class="pin" id="fName" maxlength="10" placeholder="이름이나 별명" autocomplete="off"></div>
+      <div id="fs2" class="hide"><div class="plabel">이유</div><textarea class="pin" id="fWhy" maxlength="40" rows="3" placeholder="예: 맨날 야근시킴"></textarea></div>
+      <div id="fs3" class="hide"><div class="plabel">사진도 있어?</div>
+        <div id="fPhotoState" class="pnote">사진은 없어도 돼요</div>
+        <button class="plink" id="fPhoto">📷 사진 넣기</button>
+      </div>
+      <div class="psteps"><i class="on"></i><i></i><i></i></div>
+      <div class="pnote" style="margin-top:8px">사진과 내용은 이 기기 안에서만 쓰이고 서버로 보내지 않아요. 본인이나 동의받은 사람의 사진만 써 주세요.</div>
+    </div>
+    <div class="fbtns"><button class="fancy f3" id="fPrev">이전</button><button class="fancy f2" id="fNext">다음!</button></div>
   </div>
 </div>
 
@@ -168,9 +205,10 @@ ol.rank .s{font-weight:900;color:var(--gold)}
       <button class="fancy f3" id="rShare">공유하기</button>
     </div>
     <div class="row2">
+      <button class="btn" id="rNew">✍️ 다른 사람</button>
       <button class="btn" id="rBoard">🏆 랭킹</button>
-      <button class="btn" id="rHome">🏠 처음으로</button>
     </div>
+    <button class="btn" id="rHome">🏠 처음으로</button>
   </div>
 </div>
 
