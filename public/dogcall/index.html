@@ -1044,7 +1044,9 @@ window.Dog3D = (() => {
     try{
       if(serverScript){
         try{
-          const r = await fetch('/api/dogcall/script', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({...d, mood})});
+          st.textContent = `🤖 AI가 ${d.name} 대본 쓰는 중… (최대 30초)`;
+          const ac = new AbortController(); const to = setTimeout(() => ac.abort(), 40000);
+          const r = await fetch('/api/dogcall/script', {method:'POST', signal: ac.signal, headers:{'Content-Type':'application/json'}, body: JSON.stringify({...d, mood})}).finally(() => clearTimeout(to));
           if(r.ok){ const j = await r.json(); if(Array.isArray(j.lines) && j.lines.length){ lines = j.lines; throw {code:'server_ok'}; } }
         }catch(e){ if(e && e.code === 'server_ok') throw e; }
       }

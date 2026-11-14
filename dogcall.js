@@ -220,13 +220,32 @@ async function scriptRoute(req, res) {
     if (gKey) {
       // 구글 Gemini (무료 등급)
       const model = process.env.DOGCALL_GEMINI_MODEL || 'gemini-flash-latest';
-      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-        method: 'POST',
-        headers: { 'x-goog-api-key': gKey, 'content-type': 'application/json' },
-        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 1, responseMimeType: 'application/json' } })
-      });
-      if (!r.ok) { lastScriptError = 'gemini ' + r.status + ' ' + (await r.text()).slice(0, 200); if (!key) throw new Error(lastScriptError); }
-      else { const j = await r.json(); text = ((j.candidates || [])[0]?.content?.parts || []).map(p => p.text || '').join(''); }
+      const call = async (thinking) => {
+        const ac = new AbortController(); const to = setTimeout(() => ac.abort(), 25000);
+        const gen = { temperature: 1, responseMimeType: 'application/json' };
+        if (thinking) gen.thinkingConfig = thinking;
+        try {
+          return await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+            method: 'POST', signal: ac.signal,
+            headers: { 'x-goog-api-key': gKey, 'content-type': 'application/json' },
+            body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: gen })
+          });
+        } finally { clearTimeout(to); }
+      };
+      const t0 = Date.now();
+      let r;
+      try {
+        r = await call({ thinkingLevel: 'low' });
+        if (r.status === 400) r = await call({ thinkingBudget: 0 });
+        if (r.status === 400) r = await call(null);
+      } catch (e) { lastScriptError = 'gemini ' + (e.name === 'AbortError' ? 'timeout' : e.message); if (!key) throw new Error(lastScriptError); }
+      if (r && !r.ok) { lastScriptError = 'gemini ' + r.status + ' ' + (await r.text()).slice(0, 200); if (!key) throw new Error(lastScriptError); }
+      else if (r) {
+        const j = await r.json();
+        text = ((j.candidates || [])[0]?.content?.parts || []).filter(p => !p.thought).map(p => p.text || '').join('');
+        lastScriptError = text ? '' : 'gemini empty ' + JSON.stringify(j).slice(0, 200);
+        console.log(`🐶 Gemini 대본 ${Date.now() - t0}ms`);
+      }
     }
     if (!text && key) {
       const r = await fetch('https://api.anthropic.com/v1/messages', {
