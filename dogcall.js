@@ -7,10 +7,11 @@
 const tls = require('tls');
 const https = require('https');
 const crypto = require('crypto');
+const { secMsGecV2 } = require('./edge-gec');
 
 /* ---------------- Edge 음성 (WebSocket 직접 구현) ---------------- */
 const TOKEN = '6A5AA1D4EAFF4E9FB37E23D68491D6F4';
-const CHROMIUM = '130.0.2849.68';
+const CHROMIUM = '143.0.3650.75';
 const MAJOR = CHROMIUM.split('.')[0];
 const EDGE_HOST = 'speech.platform.bing.com';
 const VOICES = {
@@ -20,12 +21,8 @@ const VOICES = {
 };
 let clockSkew = 0; // 서버 시계가 어긋나면 Edge가 거절해서 보정값을 기억해요
 
-function secMsGec() {
-  let t = Math.floor((Date.now() + clockSkew) / 1000) + 11644473600;
-  t -= t % 300;
-  const ticks = (BigInt(t) * 10000000n).toString();
-  return crypto.createHash('sha256').update(ticks + TOKEN, 'ascii').digest('hex').toUpperCase();
-}
+// 2026년 10월부터 Microsoft가 v2 토큰만 받아요 (edge-gec.js)
+const secMsGec = () => secMsGecV2((Date.now() + clockSkew) / 1000);
 const D = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const M = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const p2 = n => String(n).padStart(2, '0');
@@ -38,7 +35,7 @@ const esc = s => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&
 function edgeOnce(text, voice, pitchHz, ratePct) {
   return new Promise((resolve, reject) => {
     const connId = crypto.randomUUID().replace(/-/g, '');
-    const reqPath = `/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=${TOKEN}&ConnectionId=${connId}&Sec-MS-GEC=${secMsGec()}&Sec-MS-GEC-Version=1-${CHROMIUM}`;
+    const reqPath = `/consumer/speech/synthesize/readaloud/edge/v1?TrustedClientToken=${TOKEN}&ConnectionId=${connId}&Sec-MS-GEC=${secMsGec()}&Sec-MS-GEC-Version=2-${CHROMIUM}`;
     const sock = tls.connect({ host: EDGE_HOST, port: 443, servername: EDGE_HOST });
     let buf = Buffer.alloc(0), upgraded = false, done = false, frag = null, fragOp = 0;
     const audio = [];
@@ -93,7 +90,7 @@ function edgeOnce(text, voice, pitchHz, ratePct) {
         `Sec-WebSocket-Key: ${crypto.randomBytes(16).toString('base64')}`, 'Sec-WebSocket-Version: 13',
         'Pragma: no-cache', 'Cache-Control: no-cache', 'Origin: chrome-extension://jdiccldimpdaibmpdkjnbmckianbfold',
         `User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${MAJOR}.0.0.0 Safari/537.36 Edg/${MAJOR}.0.0.0`,
-        'Accept-Encoding: gzip, deflate, br', 'Accept-Language: en-US,en;q=0.9',
+        'Accept-Encoding: gzip, deflate, br, zstd', 'Accept-Language: en-US,en;q=0.9',
         `Cookie: muid=${crypto.randomBytes(16).toString('hex').toUpperCase()};`, '', ''
       ].join('\r\n'));
     });
