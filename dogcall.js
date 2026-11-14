@@ -234,7 +234,7 @@ async function scriptRoute(req, res) {
     let text = '';
     if (gKey) {
       // 구글 Gemini (무료 등급)
-      const model = process.env.DOGCALL_GEMINI_MODEL || 'gemini-flash-latest';
+      const model = process.env.DOGCALL_GEMINI_MODEL || 'gemini-2.5-flash-lite';
       const call = (thinking) => {
         const gen = { temperature: 1, responseMimeType: 'application/json' };
         if (thinking) gen.thinkingConfig = thinking;
@@ -292,6 +292,16 @@ function handle(req, res, u) {
   if (what === 'ping') { json(res, { ok: true, voices: Object.keys(VOICES), script: !!(process.env.GEMINI_API_KEY || process.env.ANTHROPIC_API_KEY), edgeError: lastEdgeError || undefined, scriptError: lastScriptError || undefined }); return true; }
   if (what === 'tts') { ttsRoute(req, res, q); return true; }
   if (what === 'diag') {
+    const gm = q.get('gen');
+    if (gm && /^[a-z0-9.\-]+$/.test(gm)) {
+      const t0 = Date.now();
+      request(`https://generativelanguage.googleapis.com/v1beta/models/${gm}:generateContent`, { method: 'POST', timeout: 45000,
+        headers: { 'x-goog-api-key': process.env.GEMINI_API_KEY || '', 'content-type': 'application/json' },
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: '강아지가 주인 언니에게 하는 짧은 반말 한 줄. JSON {"line":"..."}' }] }], generationConfig: { responseMimeType: 'application/json' } }) })
+        .then(r => json(res, { model: gm, status: r.status, ms: Date.now() - t0, out: r.text.slice(0, 400) }))
+        .catch(e => json(res, { model: gm, error: e.message, ms: Date.now() - t0 }));
+      return true;
+    }
     const t0 = Date.now(); const k = process.env.GEMINI_API_KEY || '';
     request('https://generativelanguage.googleapis.com/v1beta/models?pageSize=50', { headers: { 'x-goog-api-key': k }, timeout: 15000 })
       .then(r => { let models = []; try { models = (JSON.parse(r.text).models || []).map(m => m.name.replace('models/', '')).filter(n => /flash|pro/.test(n)).slice(0, 30); } catch {}
