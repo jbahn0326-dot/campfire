@@ -1,7 +1,7 @@
 // 멍멍 전화 (/dogcall) — 강아지한테 전화가 오는 장난 앱의 서버 기능
 // 1) /api/dogcall/tts    : 진짜 사람 같은 한국어 AI 목소리(mp3). Microsoft Edge 읽어주기 음성 → 안 되면 구글 번역 음성
 // 2) /api/dogcall/ring 등 : 촬영폰(리모컨)으로 받는 폰에 전화 보내기
-// 3) /api/dogcall/script : ANTHROPIC_API_KEY 환경변수가 있으면 강아지 대본을 AI로 써 줌 (없으면 앱이 기본 대본 사용)
+// 3) /api/dogcall/script : GEMINI_API_KEY(무료) 또는 ANTHROPIC_API_KEY 환경변수가 있으면 강아지 대본을 AI로 써 줌 (없으면 앱이 기본 대본 사용)
 // 외부 라이브러리 없이 Node.js 기본 모듈만 사용합니다.
 'use strict';
 const tls = require('tls');
@@ -150,7 +150,7 @@ async function googleTTS(text) {
 /* ---------------- 캐시 ---------------- */
 const cache = new Map(); // key -> {buf, engine}
 function remember(k, v) { cache.set(k, v); if (cache.size > 400) cache.delete(cache.keys().next().value); }
-let busy = 0, lastEdgeError = '';
+let busy = 0, lastEdgeError = '', lastScriptError = '';
 
 async function ttsRoute(req, res, q) {
   const text = String(q.get('t') || '').replace(/\s+/g, ' ').trim().slice(0, 300);
@@ -191,8 +191,8 @@ function readBody(req, max = 8000) {
   });
 }
 async function scriptRoute(req, res) {
-  const key = process.env.ANTHROPIC_API_KEY;
-  if (!key) { res.writeHead(501); return res.end(); }
+  const gKey = process.env.GEMINI_API_KEY, key = process.env.ANTHROPIC_API_KEY;
+  if (!gKey && !key) { res.writeHead(501); return res.end(); }
   try {
     const b = JSON.parse(await readBody(req));
     const f = k => String(b[k] || '').slice(0, k === 'memories' ? 600 : 80);
@@ -216,21 +216,35 @@ async function scriptRoute(req, res) {
 - 마지막 줄은 여운이 남는 짧은 한마디.
 - 이모지, 괄호 지문, 효과음 표기 금지.
 출력은 JSON 하나만: {"lines": ["첫 줄", "둘째 줄", ...]}`;
-    const r = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
-      body: JSON.stringify({ model: process.env.DOGCALL_MODEL || 'claude-sonnet-5-5', max_tokens: 800, messages: [{ role: 'user', content: prompt }] })
-    });
-    if (!r.ok) throw new Error('anthropic ' + r.status);
-    const j = await r.json();
-    const text = (j.content || []).map(c => c.text || '').join('');
+    let text = '';
+    if (gKey) {
+      // 구글 Gemini (무료 등급)
+      const model = process.env.DOGCALL_GEMINI_MODEL || 'gemini-flash-latest';
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+        method: 'POST',
+        headers: { 'x-goog-api-key': gKey, 'content-type': 'application/json' },
+        body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: { temperature: 1, responseMimeType: 'application/json' } })
+      });
+      if (!r.ok) { lastScriptError = 'gemini ' + r.status + ' ' + (await r.text()).slice(0, 200); if (!key) throw new Error(lastScriptError); }
+      else { const j = await r.json(); text = ((j.candidates || [])[0]?.content?.parts || []).map(p => p.text || '').join(''); }
+    }
+    if (!text && key) {
+      const r = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'x-api-key': key, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+        body: JSON.stringify({ model: process.env.DOGCALL_MODEL || 'claude-sonnet-5-5', max_tokens: 800, messages: [{ role: 'user', content: prompt }] })
+      });
+      if (!r.ok) throw new Error('anthropic ' + r.status);
+      const j = await r.json();
+      text = (j.content || []).map(c => c.text || '').join('');
+    }
     const m = text.match(/\{[\s\S]*\}/);
     const lines = m ? JSON.parse(m[0]).lines : null;
     if (!Array.isArray(lines) || !lines.length) throw new Error('empty');
     res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
     res.end(JSON.stringify({ lines: lines.map(s => String(s).trim()).filter(Boolean).slice(0, 20) }));
   } catch (e) {
-    console.log('⚠️  대본 만들기 실패:', e.message);
+    lastScriptError = lastScriptError || e.message; console.log('⚠️  대본 만들기 실패:', e.message);
     res.writeHead(502); res.end();
   }
 }
@@ -244,7 +258,7 @@ function handle(req, res, u) {
   if (!u.startsWith('/api/dogcall/')) return false;
   const q = new URLSearchParams((req.url || '').split('?')[1] || '');
   const what = u.slice('/api/dogcall/'.length);
-  if (what === 'ping') { json(res, { ok: true, voices: Object.keys(VOICES), script: !!process.env.ANTHROPIC_API_KEY, edgeError: lastEdgeError || undefined }); return true; }
+  if (what === 'ping') { json(res, { ok: true, voices: Object.keys(VOICES), script: !!(process.env.GEMINI_API_KEY || process.env.ANTHROPIC_API_KEY), edgeError: lastEdgeError || undefined, scriptError: lastScriptError || undefined }); return true; }
   if (what === 'tts') { ttsRoute(req, res, q); return true; }
   if (what === 'script' && req.method === 'POST') { scriptRoute(req, res); return true; }
   const code = q.get('c') || '';
