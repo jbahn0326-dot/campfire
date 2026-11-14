@@ -364,7 +364,6 @@ window.Dog3D = (() => {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = T.PCFSoftShadowMap;
-  if(renderer.outputEncoding !== undefined) renderer.outputEncoding = T.sRGBEncoding;
 
   scene = new T.Scene();
   camera = new T.PerspectiveCamera(32, 1, .1, 100);
