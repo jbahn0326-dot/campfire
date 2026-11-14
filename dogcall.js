@@ -147,6 +147,21 @@ async function googleTTS(text) {
   return Buffer.concat(bufs);
 }
 
+/* ---------------- HTTPS 요청 (IPv4 고정, 시간 제한) ---------------- */
+function request(url, { method = 'GET', headers = {}, body = null, timeout = 25000 } = {}) {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const r = https.request({ hostname: u.hostname, path: u.pathname + u.search, method, headers, family: 4, timeout }, res => {
+      const out = []; res.on('data', c => out.push(c));
+      res.on('end', () => resolve({ status: res.statusCode, text: Buffer.concat(out).toString('utf8') }));
+    });
+    r.on('timeout', () => r.destroy(Object.assign(new Error('timeout'), { name: 'AbortError' })));
+    r.on('error', reject);
+    if (body) r.write(body);
+    r.end();
+  });
+}
+
 /* ---------------- 캐시 ---------------- */
 const cache = new Map(); // key -> {buf, engine}
 function remember(k, v) { cache.set(k, v); if (cache.size > 400) cache.delete(cache.keys().next().value); }
@@ -220,17 +235,14 @@ async function scriptRoute(req, res) {
     if (gKey) {
       // 구글 Gemini (무료 등급)
       const model = process.env.DOGCALL_GEMINI_MODEL || 'gemini-flash-latest';
-      const call = async (thinking) => {
-        const ac = new AbortController(); const to = setTimeout(() => ac.abort(), 25000);
+      const call = (thinking) => {
         const gen = { temperature: 1, responseMimeType: 'application/json' };
         if (thinking) gen.thinkingConfig = thinking;
-        try {
-          return await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
-            method: 'POST', signal: ac.signal,
-            headers: { 'x-goog-api-key': gKey, 'content-type': 'application/json' },
-            body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: gen })
-          });
-        } finally { clearTimeout(to); }
+        return request(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+          method: 'POST', timeout: 30000,
+          headers: { 'x-goog-api-key': gKey, 'content-type': 'application/json' },
+          body: JSON.stringify({ contents: [{ role: 'user', parts: [{ text: prompt }] }], generationConfig: gen })
+        });
       };
       const t0 = Date.now();
       let r;
@@ -239,11 +251,11 @@ async function scriptRoute(req, res) {
         if (r.status === 400) r = await call({ thinkingBudget: 0 });
         if (r.status === 400) r = await call(null);
       } catch (e) { lastScriptError = 'gemini ' + (e.name === 'AbortError' ? 'timeout' : e.message); if (!key) throw new Error(lastScriptError); }
-      if (r && !r.ok) { lastScriptError = 'gemini ' + r.status + ' ' + (await r.text()).slice(0, 200); if (!key) throw new Error(lastScriptError); }
+      if (r && r.status !== 200) { lastScriptError = 'gemini ' + r.status + ' ' + r.text.slice(0, 300); if (!key) throw new Error(lastScriptError); }
       else if (r) {
-        const j = await r.json();
+        const j = JSON.parse(r.text);
         text = ((j.candidates || [])[0]?.content?.parts || []).filter(p => !p.thought).map(p => p.text || '').join('');
-        lastScriptError = text ? '' : 'gemini empty ' + JSON.stringify(j).slice(0, 200);
+        lastScriptError = text ? '' : 'gemini empty ' + r.text.slice(0, 200);
         console.log(`🐶 Gemini 대본 ${Date.now() - t0}ms`);
       }
     }
@@ -279,6 +291,14 @@ function handle(req, res, u) {
   const what = u.slice('/api/dogcall/'.length);
   if (what === 'ping') { json(res, { ok: true, voices: Object.keys(VOICES), script: !!(process.env.GEMINI_API_KEY || process.env.ANTHROPIC_API_KEY), edgeError: lastEdgeError || undefined, scriptError: lastScriptError || undefined }); return true; }
   if (what === 'tts') { ttsRoute(req, res, q); return true; }
+  if (what === 'diag') {
+    const t0 = Date.now(); const k = process.env.GEMINI_API_KEY || '';
+    request('https://generativelanguage.googleapis.com/v1beta/models?pageSize=50', { headers: { 'x-goog-api-key': k }, timeout: 15000 })
+      .then(r => { let models = []; try { models = (JSON.parse(r.text).models || []).map(m => m.name.replace('models/', '')).filter(n => /flash|pro/.test(n)).slice(0, 30); } catch {}
+        json(res, { status: r.status, ms: Date.now() - t0, models, err: r.status === 200 ? undefined : r.text.slice(0, 300) }); })
+      .catch(e => json(res, { error: e.message, ms: Date.now() - t0 }));
+    return true;
+  }
   if (what === 'script' && req.method === 'POST') { scriptRoute(req, res); return true; }
   const code = q.get('c') || '';
   if (!/^\d{4}$/.test(code)) { res.writeHead(400); res.end(); return true; }
