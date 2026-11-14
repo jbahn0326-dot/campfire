@@ -131,3 +131,9 @@ http://localhost:3000 에 들어가요. 창을 두 개 열면 둘이 같이 있�
 | 물고기 종류·확률 | `public/game.js`의 `FISH` |
 | 군고구마 익는 시간 | `public/game.js`의 `POTATO_GOOD` |
 | 캐릭터 색, 자동 이름 | `public/game.js`의 `COLORS`, `ADJ`, `NOUN` |
+
+## 🐶 멍멍 전화 (`/dogcall/`)
+강아지한테서 전화가 오는 장난 앱. 대본을 진짜 사람 같은 한국어 AI 목소리(Edge 읽어주기 음성, 실패하면 구글 번역 음성)로 읽어 주고, 3D 복셀 강아지가 말해요.
+- `/api/dogcall/tts?t=문장&v=sunhi|injoon|hyunsu&p=피치Hz&r=빠르기%` → mp3
+- 촬영폰 리모컨: `/api/dogcall/ring`, `/api/dogcall/state`, `/api/dogcall/poll` (4자리 코드)
+- `ANTHROPIC_API_KEY` 환경변수를 넣으면 강아지 대본을 AI가 써 줘요 (없으면 기본 대본)

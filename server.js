@@ -5,6 +5,7 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const dogcall = require('./dogcall');
 
 const PORT = process.env.PORT || 3000;
 const PUB = path.join(__dirname, 'public');
@@ -81,11 +82,12 @@ table{margin-top:18px;border-collapse:collapse;width:100%;max-width:560px;font-s
 const MIME = {
   '.html': 'text/html; charset=utf-8', '.png': 'image/png', '.js': 'text/javascript; charset=utf-8',
   '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.ico': 'image/x-icon',
-  '.webmanifest': 'application/manifest+json', '.txt': 'text/plain; charset=utf-8'
+  '.webmanifest': 'application/manifest+json', '.txt': 'text/plain; charset=utf-8', '.mp3': 'audio/mpeg'
 };
 const server = http.createServer((req, res) => {
   let u;
   try { u = decodeURIComponent((req.url || '/').split('?')[0]); } catch { res.writeHead(400); return res.end(); }
+  if (dogcall.handle(req, res, u)) return;
   if (u === '/healthz') { res.writeHead(200, { 'Content-Type': 'text/plain' }); return res.end('ok'); }
   if (u === '/api/visit') {
     const q = new URLSearchParams((req.url || '').split('?')[1] || ''); const g = q.get('g'), id = q.get('id') || '';
