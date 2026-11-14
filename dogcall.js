@@ -153,7 +153,7 @@ async function googleTTS(text) {
 /* ---------------- 캐시 ---------------- */
 const cache = new Map(); // key -> {buf, engine}
 function remember(k, v) { cache.set(k, v); if (cache.size > 400) cache.delete(cache.keys().next().value); }
-let busy = 0;
+let busy = 0, lastEdgeError = '';
 
 async function ttsRoute(req, res, q) {
   const text = String(q.get('t') || '').replace(/\s+/g, ' ').trim().slice(0, 300);
@@ -168,7 +168,7 @@ async function ttsRoute(req, res, q) {
     busy++;
     try {
       try { hit = { buf: await edgeTTS(text, VOICES[vKey], pitch, rate), engine: 'edge' }; }
-      catch (e) { console.log('⚠️  Edge 음성 실패 → 구글 음성 사용:', e.message); hit = { buf: await googleTTS(text), engine: 'google' }; }
+      catch (e) { lastEdgeError = e.message + (e.status ? ' (' + e.status + ')' : ''); console.log('⚠️  Edge 음성 실패 → 구글 음성 사용:', e.message); hit = { buf: await googleTTS(text), engine: 'google' }; }
       remember(key, hit);
     } catch (e) {
       busy--; console.log('⚠️  음성 만들기 실패:', e.message);
@@ -247,7 +247,7 @@ function handle(req, res, u) {
   if (!u.startsWith('/api/dogcall/')) return false;
   const q = new URLSearchParams((req.url || '').split('?')[1] || '');
   const what = u.slice('/api/dogcall/'.length);
-  if (what === 'ping') { json(res, { ok: true, voices: Object.keys(VOICES), script: !!process.env.ANTHROPIC_API_KEY }); return true; }
+  if (what === 'ping') { json(res, { ok: true, voices: Object.keys(VOICES), script: !!process.env.ANTHROPIC_API_KEY, edgeError: lastEdgeError || undefined }); return true; }
   if (what === 'tts') { ttsRoute(req, res, q); return true; }
   if (what === 'script' && req.method === 'POST') { scriptRoute(req, res); return true; }
   const code = q.get('c') || '';
