@@ -848,7 +848,7 @@ window.Dog3D = (() => {
     const st = $('#genStatus');
     st.className = 'status ok';
     st.textContent = fresh
-      ? (how === 'template' ? `✅ 기본 대본 준비 완료 (${lines.length}마디)` : `✅ 대본 준비 완료 (${lines.length}마디)`)
+      ? (how === 'template' ? `✅ ${form().name} 맞춤 대본 완료 (${lines.length}마디) · 다시 누르면 다른 버전` : `✅ 대본 준비 완료 (${lines.length}마디)`)
       : `✅ 저장된 대본이 있어요 (${lines.length}마디)`;
   }
 
@@ -877,28 +877,163 @@ window.Dog3D = (() => {
 출력은 JSON 하나만: {"lines": ["첫 줄", "둘째 줄", ...]}`;
   }
 
-  function templateScript(d){
-    const n = d.name, c = d.callme;
-    const like = (d.likes || '간식').split(/[,，、]/)[0].trim();
-    const mem = (d.memories || '').split('\n')[0].trim();
-    const out = [
-      `여보세요? ${c}! 나야, ${n}!`,
-      `${c} 목소리 들으니까 꼬리가 막 흔들려.`,
-      `있잖아, 나 오늘 하루 종일 ${c} 생각했어.`,
-      `현관에서 발소리 날 때마다 귀가 쫑긋했어.`,
-    ];
-    if(mem) out.push(`${c}는 기억 안 나도, 나는 다 기억해.`);
-    out.push(
-      `${like} 생각도 조금 했어. 진짜 조금.`,
-      `근데 ${c} 생각이 훨씬 많이 났어.`,
-      `나는 말은 못 하지만 다 알아.`,
-      `${c}가 힘든 날도, 웃는 날도.`,
-      `그래서 오늘은 꼭 말해주고 싶었어.`,
-      `${c}가 내 ${c}라서 정말 좋아.`,
-      `빨리 와. 현관에서 기다릴게.`
-    );
-    return out;
-  }
+  /* ---------- 대본 만들기 (AI 없이도 성격·에피소드로 조립) ---------- */
+  const KoGen = (() => {
+    const BASE = 0xAC00;
+    const dec = ch => { const c = ch.charCodeAt(0) - BASE; if(c < 0 || c > 11171) return null; return {cho: Math.floor(c / 588), jung: Math.floor((c % 588) / 28), jong: c % 28}; };
+    const com = (cho, jung, jong) => String.fromCharCode(BASE + cho * 588 + jung * 28 + jong);
+    const last = s => s.trim().slice(-1);
+    const batchim = w => { const d = dec(last(w) || ''); return !!(d && d.jong); };
+    const j = (w, a, b) => w + (batchim(w) ? a : b);           // 받침 있으면 a, 없으면 b
+    const pick = a => a[Math.floor(Math.random() * a.length)];
+    const shuffle = a => { const b = a.slice(); for(let i = b.length - 1; i > 0; i--){ const k = Math.floor(Math.random() * (i + 1)); [b[i], b[k]] = [b[k], b[i]]; } return b; };
+    const BIEUP_ADJ = /(귀엽|무섭|춥|덥|반갑|즐겁|가볍|무겁|아름답|부럽|고맙|어렵|쉽|맵|밉|그립)$/;
+    // 동사·형용사 어간 → 반말(해체) "~어/아"
+    function conj(stem){
+      if(!stem) return stem;
+      if(/하$/.test(stem)) return stem.slice(0, -1) + '해';
+      if(BIEUP_ADJ.test(stem)){ const s = stem.slice(0, -1), d = dec(last(stem)); return s + com(d.cho, d.jung, 0) + (stem === '돕' || stem === '곱' ? '와' : '워'); }
+      if(/(듣|걷|묻|싣|깨닫)$/.test(stem)){ const d = dec(last(stem)); return stem.slice(0, -1) + com(d.cho, d.jung, 8) + '어'; }
+      const d = dec(last(stem)); if(!d) return stem;
+      const pre = stem.slice(0, -1);
+      if(d.jong){ return stem + ([0, 8].includes(d.jung) ? '아' : '어'); }   // 먹어, 잡아, 좋아
+      switch(d.jung){
+        case 0: case 4: case 1: case 5: return stem;                         // 가, 서, 보내, 세
+        case 8: return pre + com(d.cho, 9, 0);                              // 보 → 봐
+        case 13: return pre + com(d.cho, 14, 0);                            // 주 → 줘
+        case 20: return pre + com(d.cho, 6, 0);                             // 기다리 → 기다려
+        case 11: return pre + com(d.cho, 10, 0);                            // 되 → 돼
+        case 18: { const p = dec(last(pre) || ''); return pre + com(d.cho, p && [0, 8].includes(p.jung) ? 0 : 4, 0); } // 아프→아파, 쓰→써
+        default: return stem + '어';
+      }
+    }
+    // 사용자가 적은 문장 끝 → 어간 (기다림 → 기다리, 잔다 → 자, 좋아함 → 좋아하)
+    function toStem(s){
+      s = s.trim().replace(/[.!~]+$/, '').replace(/요$/, '');
+      if(/했음$|했다$/.test(s)) return {past: s.replace(/했[음다]$/, '했')};
+      if(/[었았]음$|[었았]다$/.test(s)) return {past: s.slice(0, -1)};
+      if(/함$/.test(s)) return {stem: s.slice(0, -1) + '하'};
+      if(/(있|없)(음|다)$/.test(s)) return {stem: s.slice(0, -1)};
+      if(/는다$/.test(s)) return {stem: s.slice(0, -2)};
+      if(/다$/.test(s)){
+        const body = s.slice(0, -1), d = dec(last(body) || '');
+        if(d && d.jong === 4) return {stem: body.slice(0, -1) + com(d.cho, d.jung, 0)};
+        return {stem: body};
+      }
+      if(/음$/.test(s)) return {stem: s.slice(0, -1)};
+      if(/(귀여|무서|반가|고마|즐거|어려|부러|그리|아름다|가벼|무거|추|더|외로|서러)움$/.test(s)){ const b = s.slice(0, -1), p = dec(last(b)); return {stem: b.slice(0, -1) + com(p.cho, p.jung, 17)}; }
+      const d = dec(last(s) || '');
+      if(d && d.jong === 16) return {stem: s.slice(0, -1) + com(d.cho, d.jung, 0)};
+      if(/(어|아|야|지|해|네|게|래|대|자|거든|잖아)$/.test(s)) return {done: s};
+      return {noun: s};
+    }
+    // 습관 문장은 "~잖아"로: 기다리잖아, 자잖아
+    function habit(s){
+      const r = toStem(s);
+      if(r.past) return r.past + '잖아';
+      if(r.stem) return r.stem + '잖아';
+      if(r.done) return r.done;
+      return r.noun + ', 기억나?';
+    }
+    function toBanmal(s){
+      const r = toStem(s);
+      if(r.past) return r.past + '어';
+      if(r.stem) return conj(r.stem);
+      if(r.done) return r.done;
+      return r.noun + ', 기억나?';
+    }
+    // 주인 시점("내 다리") → 강아지 시점("언니 다리"), 강아지 이름 → 나
+    function pov(s, name, me){
+      const R = [
+        [/(^|\s)내가(?=\s|$)/g, `$1${j(me, '이', '가')}`], [/(^|\s)나는(?=\s|$)/g, `$1${j(me, '은', '는')}`],
+        [/(^|\s)나를(?=\s|$)/g, `$1${j(me, '을', '를')}`], [/(^|\s)날(?=\s|$)/g, `$1${j(me, '을', '를')}`],
+        [/(^|\s)나랑(?=\s|$)/g, `$1${j(me, '이랑', '랑')}`], [/(^|\s)나한테(?=\s|$)/g, `$1${me}한테`],
+        [/(^|\s)내(?=\s)/g, `$1${me}`], [/(^|\s)제(?=\s)/g, `$1${me}`], [/(^|\s)저를(?=\s|$)/g, `$1${j(me, '을', '를')}`]
+      ];
+      for(const [a, b] of R) s = s.replace(a, b);
+      if(name){
+        const e = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        s = s.replace(new RegExp(`${e}(이가|가|이는|는|이)(?=\\s)`, 'g'), (m, p) => /는/.test(p) ? '나는' : '내가')
+             .replace(new RegExp(`${e}(이를|를|이랑|랑)(?=\\s)`, 'g'), (m, p) => /랑/.test(p) ? '나랑' : '나를');
+      }
+      return s;
+    }
+    function persona(p, me){
+      const out = [];
+      const has = r => r.test(p);
+      if(has(/겁|무서|소심/)) out.push(pick([`나 겁 많은 거 알지? 근데 ${me} 옆이면 하나도 안 무서워.`, `나 쫄보인 거 알지? ${me}만 있으면 용감해져.`]));
+      if(has(/애교/)) out.push(pick([`내가 애교 부리는 거, 사실 ${me} 웃는 거 보려고 그러는 거야.`, `애교는 ${me}한테만 하는 거야. 비밀이야.`]));
+      if(has(/혼나|눈.?피|눈치/)) out.push(`혼날 때 눈 피하는 거, 미안해서 그러는 거야.`);
+      if(has(/먹|식탐|먹보|간식/)) out.push(pick([`나 먹는 거 엄청 좋아하잖아. 근데 ${me}가 더 좋아.`, `식탐 많은 거 인정. 근데 ${me}는 간식보다 좋아.`]));
+      if(has(/활발|에너지|장난|뛰|신나/)) out.push(`나 맨날 뛰어다니는 거, ${j(me, '이랑', '랑')} 놀고 싶어서 그래.`);
+      if(has(/조용|얌전|순|차분/)) out.push(`나 조용하지? 근데 속으로는 맨날 ${me} 불러.`);
+      if(has(/질투/)) out.push(`${j(me, '이', '가')} 다른 강아지 쳐다보면 나 살짝 질투나.`);
+      if(has(/잠|게으|느긋/)) out.push(`나 잠 많은 거, ${me} 꿈 꾸느라 그런 거야.`);
+      if(has(/고집|도도|새침/)) out.push(`나 고집 센 척하는데, ${me} 말은 다 듣고 있어.`);
+      if(has(/껌딱지|붙어|따라다/)) out.push(`나 ${me} 껌딱지인 거 알지? 평생 붙어 있을 거야.`);
+      return out;
+    }
+    function likesLines(list, me, mood){
+      const out = [];
+      if(list[0]) out.push(mood === '웃김'
+        ? pick([`근데 ${j(list[0], '이', '가')} 어디 있는지 나 다 알아. 이따 줘.`, `${list[0]} 얘기 나와서 말인데, 하나만 더 주면 안 돼?`])
+        : pick([`${list[0]} 진짜 좋아. 근데 ${j(me, '이', '가')} 훨씬 더 좋아.`, `${list[0]} 생각만 해도 꼬리가 흔들려.`]));
+      if(list[1]) out.push(pick([`${j(list[1], '이랑', '랑')} ${j(me, '이', '가')} 같이 있으면 그날은 최고야.`, `${list[1]} 할 때 ${me} 웃는 얼굴이 제일 좋아.`]));
+      return out;
+    }
+    function memLines(mems, me, name, mood){
+      const pre = {
+        '감동': ['있잖아, ', `${me}는 모를 수도 있는데, `, '그거 알아? ', ''],
+        '웃김': ['솔직히 말할게. ', `${me}도 알지? `, '그리고 '],
+        '서운함 토로(귀엽게)': ['', `${me}도 알잖아. `, '있잖아, '],
+        '응원': ['있잖아, ', '그거 알아? ', '']
+      }[mood] || ['있잖아, '];
+      const post = {
+        '감동': ['', ' 그때마다 행복해.', ` 그게 나한테는 제일 큰 행복이야.`],
+        '웃김': ['', ' 나 좀 귀엽지?', ' 인정?'],
+        '서운함 토로(귀엽게)': [` 근데 ${me}는 그거 알아?`, ' 그거 쉬운 거 아니야.', ''],
+        '응원': ['', ` 그러니까 ${me}는 혼자가 아니야.`, ' 나는 늘 여기 있어.']
+      }[mood] || [''];
+      const used = new Set();
+      return mems.map(raw => {
+        const s = habit(pov(raw, name, me)).replace(/^(나는|내가|나)\s/, '');
+        let p = pick(post); if(used.has(p) && p) p = ''; used.add(p);
+        let q = pick(pre); if(used.has('pre:' + q) && q) q = ''; used.add('pre:' + q);
+        const body = q + s;
+        return /[?!]$/.test(body) ? body + p : body + '.' + p;
+      });
+    }
+    function build(d, mood){
+      const me = d.callme || '언니', name = d.name || '토리';
+      const likes = (d.likes || '').split(/[,，、\/\n]|그리고/).map(s => s.trim()).filter(Boolean);
+      const mems = (d.memories || '').split(/\n|(?<=[.!?])\s+/).map(s => s.replace(/^[-•*\d.)\s]+/, '').replace(/^예\)\s*/, '').trim()).filter(s => s.length > 3);
+      const per = persona(d.persona || '', me);
+      const memL = memLines(shuffle(mems).slice(0, 3), me, name, mood);
+      const likeL = likesLines(likes, me, mood);
+      let open, mid, close;
+      if(mood === '웃김'){
+        open = [`여보세요? ${me}! 나야, ${name}!`, pick([`급하게 할 말 있어서 전화했어.`, `놀랐지? 나 전화할 줄 알아.`]), `${j(me, '이', '가')} 없어서 심심해서 죽는 줄 알았어.`];
+        mid = [...memL, ...likeL, ...per.slice(0, 2)];
+        close = [pick([`아 그리고 간식 하나 더 주기로 약속해.`, `이 전화 요금은 간식으로 내 줘.`]), `${me} 사랑해. 진짜야.`, `끊는다! 빨리 와!`];
+      }else if(mood === '서운함 토로(귀엽게)'){
+        open = [`여보세요? ${me}! 나야, ${name}.`, `나 할 말 있어. 서운한 거 있어.`, `${me} 나가고 나 계속 현관만 봤어.`];
+        mid = [...memL, ...per.slice(0, 1), ...likeL.slice(0, 1)];
+        close = [`그래도 화 다 풀렸어. 간식 주면.`, `${me} 목소리 들으니까 벌써 꼬리 흔들려.`, `빨리 와. 안 오면 또 삐질 거야.`];
+      }else if(mood === '응원'){
+        open = [`여보세요? ${me}! 나야, ${name}!`, `${me} 오늘 힘들었지?`, `나 다 알아. 냄새로 다 알아.`];
+        mid = [...memL, ...per.slice(0, 1), ...likeL.slice(0, 1)];
+        close = [`${me}는 내 세상에서 제일 멋있어.`, `힘들면 나 꼭 안아. 나 그거 제일 잘해.`, `오늘도 고생했어. 현관에서 기다릴게.`];
+      }else{
+        open = [`여보세요? ${me}! 나야, ${name}!`, pick([`오늘은 꼭 하고 싶은 말이 있어서 전화했어.`, `나 말은 잘 못 해. 그래도 전화했어.`])];
+        mid = [...memL, ...likeL.slice(0, 1), ...per.slice(0, 2)];
+        close = [pick([`나랑 같이 있어줘서 고마워, ${me}.`, `내 ${j(me, '이', '가')} 돼줘서 고마워.`]), `${me} 많이 사랑해. 진짜 많이.`, pick([`빨리 와. 꼬리 흔들면서 기다릴게.`, `빨리 와. 현관에서 기다릴게.`])];
+      }
+      if(mid.length < 4) mid.push(`${me} 발소리는 멀리서도 다 알아.`, `${me} 냄새 나는 담요 옆에서 낮잠 잤어.`);
+      return [...open, ...mid.slice(0, 8), ...close];
+    }
+    return { build, toBanmal, habit, pov, conj };
+  })();
+  function templateScript(d){ return KoGen.build(d, mood); }
 
   $('#genBtn').addEventListener('click', async () => {
     const d = form();
