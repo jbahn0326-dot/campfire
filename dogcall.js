@@ -234,7 +234,7 @@ async function scriptRoute(req, res) {
     let text = '';
     if (gKey) {
       // 구글 Gemini (무료 등급)
-      const model = process.env.DOGCALL_GEMINI_MODEL || 'gemini-2.5-flash-lite';
+      const model = process.env.DOGCALL_GEMINI_MODEL || 'gemini-3.5-flash-lite';
       const call = (thinking) => {
         const gen = { temperature: 1, responseMimeType: 'application/json' };
         if (thinking) gen.thinkingConfig = thinking;
